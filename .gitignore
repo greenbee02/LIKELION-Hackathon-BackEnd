@@ -1,0 +1,46 @@
+# Gradle generated files
+.gradle/
+build/
+out/
+
+# Keep the Gradle Wrapper scripts and wrapper configuration tracked.
+# Do not ignore gradle/wrapper/.
+
+# IDE settings
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+
+# Local machine and OS files
+local.properties
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+application-*-secret.yml
+application-*-secret.yaml
+*.pem
+*.key
+
+# Logs, temporary files, and runtime output
+*.log
+*.pid
+*.hprof
+.tmp/
+tmp/
+temp/
+reports/
+coverage/
+
+# Tool caches
+.cache/
+.sonar/
