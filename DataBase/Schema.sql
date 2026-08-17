@@ -207,13 +207,17 @@ CREATE TABLE products (
 -- 7. PRODUCT COLLECTION ITEMS
 -- ============================================================
 CREATE TABLE product_collection_items (
+    id CHAR(36) PRIMARY KEY,
     product_collection_id CHAR(36) NOT NULL,
     product_id CHAR(36) NOT NULL,
     display_order INT NOT NULL DEFAULT 0,
     is_required BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
 
-    PRIMARY KEY (product_collection_id, product_id),
+    CONSTRAINT uk_product_collection_items_pair
+        UNIQUE (product_collection_id, product_id),
 
     CONSTRAINT fk_product_collection_items_collection
         FOREIGN KEY (product_collection_id) REFERENCES product_collections(id)
@@ -285,6 +289,7 @@ CREATE TABLE card_templates (
 
     front_image_url VARCHAR(1000) NOT NULL,
     back_image_url VARCHAR(1000) NOT NULL,
+    allowed_card_type VARCHAR(30) NULL,
 
     resource_data JSON NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -299,6 +304,9 @@ CREATE TABLE card_templates (
 
     CONSTRAINT uk_card_templates_brand_name
         UNIQUE (brand_id, name),
+
+    CONSTRAINT chk_card_templates_allowed_type
+        CHECK (allowed_card_type IS NULL OR allowed_card_type IN ('BASIC', 'COLLECTOR')),
 
     INDEX idx_card_templates_brand_id (brand_id),
     INDEX idx_card_templates_active (is_active)
@@ -316,13 +324,16 @@ CREATE TABLE cards (
     purchase_qr_id CHAR(36) NOT NULL UNIQUE,
     template_id CHAR(36) NOT NULL,
 
+    original_card_type VARCHAR(30) NOT NULL DEFAULT 'BASIC',
     card_type VARCHAR(30) NOT NULL DEFAULT 'BASIC',
     status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE',
+    selected_customization_id CHAR(36) NULL,
 
     purchase_date DATETIME NOT NULL,
     purchase_store_id CHAR(36) NOT NULL,
     serial_number VARCHAR(255) NULL,
 
+    issued_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ON UPDATE CURRENT_TIMESTAMP,
@@ -350,13 +361,17 @@ CREATE TABLE cards (
     CONSTRAINT chk_cards_type
         CHECK (card_type IN ('BASIC', 'CUSTOMIZE', 'COLLECTOR')),
 
+    CONSTRAINT chk_cards_original_type
+        CHECK (original_card_type IN ('BASIC', 'COLLECTOR')),
+
     CONSTRAINT chk_cards_status
-        CHECK (status IN ('ACTIVE', 'BLOCKED')),
+        CHECK (status IN ('ACTIVE', 'BLOCKED', 'REVOKED')),
 
     INDEX idx_cards_user_id (user_id),
     INDEX idx_cards_product_id (product_id),
     INDEX idx_cards_template_id (template_id),
     INDEX idx_cards_store_id (purchase_store_id),
+    INDEX idx_cards_selected_customization_id (selected_customization_id),
     INDEX idx_cards_user_type (user_id, card_type)
 ) ENGINE=InnoDB;
 
@@ -384,7 +399,6 @@ CREATE TABLE card_customizations (
     ai_model VARCHAR(100) NULL,
 
     generation_status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
-    is_selected BOOLEAN NOT NULL DEFAULT FALSE,
 
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -404,14 +418,14 @@ CREATE TABLE card_customizations (
                 'PENDING',
                 'COMPLETED',
                 'FAILED',
+                'REJECTED',
                 'ARCHIVED'
             )
         ),
 
     INDEX idx_card_customizations_card_id (card_id),
     INDEX idx_card_customizations_template_id (template_id),
-    INDEX idx_card_customizations_status (generation_status),
-    INDEX idx_card_customizations_selected (card_id, is_selected)
+    INDEX idx_card_customizations_status (generation_status)
 ) ENGINE=InnoDB;
 
 
@@ -615,7 +629,7 @@ CREATE TABLE physical_cards (
     digital_card_id CHAR(36) NULL,
     user_reward_id CHAR(36) NULL,
     physical_card_type VARCHAR(30) NOT NULL,
-    card_token VARCHAR(255) NOT NULL UNIQUE,
+    physical_token VARCHAR(255) NOT NULL UNIQUE,
     status VARCHAR(30) NOT NULL DEFAULT 'ISSUED',
     issued_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     activated_at DATETIME NULL,
@@ -769,3 +783,9 @@ CREATE TABLE ai_experience_recommendations (
     INDEX idx_ai_experience_recommendations_analysis (analysis_id),
     INDEX idx_ai_experience_recommendations_status (status)
 ) ENGINE=InnoDB;
+
+ALTER TABLE cards
+    ADD CONSTRAINT fk_cards_selected_customization
+        FOREIGN KEY (selected_customization_id)
+        REFERENCES card_customizations(id)
+        ON DELETE SET NULL;

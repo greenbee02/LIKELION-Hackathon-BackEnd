@@ -272,8 +272,7 @@ JOIN card_templates ct
 JOIN stores s
     ON s.id = c.purchase_store_id
 LEFT JOIN card_customizations cc
-    ON cc.card_id = c.id
-   AND cc.is_selected = TRUE
+    ON cc.id = c.selected_customization_id
 ORDER BY c.created_at DESC;
 
 
@@ -351,15 +350,13 @@ FROM (
     UNION ALL
 
     SELECT
-        'Cards with multiple selected customizations',
+        'Cards with invalid selected customization',
         COUNT(*)
-    FROM (
-        SELECT card_id
-        FROM card_customizations
-        WHERE is_selected = TRUE
-        GROUP BY card_id
-        HAVING COUNT(*) > 1
-    ) duplicate_selections
+    FROM cards c
+    LEFT JOIN card_customizations cc
+        ON cc.id = c.selected_customization_id
+    WHERE c.selected_customization_id IS NOT NULL
+      AND (cc.id IS NULL OR cc.card_id <> c.id)
 ) integrity_checks;
 
 
