@@ -51,6 +51,7 @@ card_token 입력
 - card_templates
 - cards
 - card_customizations
+- ai_resource_generations
 
 ### 아직 API 구현 전인 확장 영역
 
@@ -281,6 +282,25 @@ POST /api/v1/cards/{cardId}/restore-original
 - 생성 상태는 즉시 COMPLETED로 저장한다.
 - ai_model은 mock-v1로 저장한다.
 
+### AI 리소스 생성
+
+카드 완성본을 AI에게 통째로 맡기지 않고, 사용자가 조합할 후보 리소스를 별도 이력으로 관리한다.
+
+- 배경, 테두리, 패턴, 장식, 색상 조합, 문구 스타일, 상품 각도 이미지, 조합 추천을 지원한다.
+- `ai_resource_generations`는 카드·상품·템플릿·요청 옵션·생성 결과·처리 상태를 저장한다.
+- 생성 요청은 `PENDING`으로 저장하고, 실제 provider가 결과를 저장할 수 있도록 `COMPLETED`, `FAILED`, `REJECTED`, `ARCHIVED` 상태를 둔다.
+- 최종 사용자가 선택한 리소스 조합은 기존 `card_customizations.customization_data`에 기록한다.
+
+API:
+
+~~~text
+POST /api/v1/cards/{cardId}/ai-resources
+GET  /api/v1/cards/{cardId}/ai-resources
+GET  /api/v1/cards/{cardId}/ai-resources/{resourceId}
+~~~
+
+현재 구현은 실제 AI 호출 없이 생성 요청을 `PENDING`으로 저장한다. 다음 단계에서 provider worker가 PENDING 작업을 가져가 이미지 저장소와 AI 모델을 호출하고 결과 상태를 갱신해야 한다.
+
 ## 8. 검증 결과
 
 ### H2
@@ -360,12 +380,14 @@ GET /api/v1/cards/{cardId}/templates
 - PostgreSQL 동시성 테스트 확대
 - DB UNIQUE 오류를 도메인 오류로 변환
 
-### 3순위: 실제 커스터마이징 처리
+### 3순위: 실제 AI 리소스 처리
 
-- Mock 생성기를 비동기 처리로 교체
-- PENDING 상태 저장
+- `ai_resource_generations`의 PENDING 작업을 처리하는 worker 추가
+- 이미지 생성 provider와 API 키·모델 설정 연결
+- 생성 결과를 영구 이미지 저장소에 업로드
 - AI 성공·실패·검수 거절 처리
-- 이미지 저장 및 URL 정책 확정
+- 생성 결과를 `card_customizations.customization_data`에 선택 저장
+- 사용자가 선택한 배경·테두리·상품 각도 이미지를 조합해 미리보기 제공
 
 ### 4순위: 사용자 컬렉션
 

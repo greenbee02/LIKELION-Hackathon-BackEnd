@@ -83,6 +83,40 @@ POST /api/v1/cards/{cardId}/restore-original
 
 현재 선택 결과는 `cards.selected_customization_id`로 관리한다. 원본 복원 시 선택 ID를 NULL로 초기화하고 AI 생성 이력은 보존한다.
 
+### AI 리소스 생성
+
+AI는 카드 완성본을 직접 확정하는 역할이 아니라 사용자가 조합할 후보 리소스를 생성한다. 현재 지원하는 리소스 유형은 다음과 같다.
+
+```text
+BACKGROUND | BORDER | PATTERN | PRODUCT_ANGLE
+DECORATION | COLOR_PALETTE | TEXT_STYLE | COMPOSITION
+```
+
+```text
+POST /api/v1/cards/{cardId}/ai-resources
+GET  /api/v1/cards/{cardId}/ai-resources
+GET  /api/v1/cards/{cardId}/ai-resources/{resourceId}
+```
+
+생성 요청은 비동기 처리를 위해 `202 Accepted`와 함께 `PENDING` 이력을 반환한다.
+
+```json
+{
+  "resourceType": "PRODUCT_ANGLE",
+  "templateId": "template-id",
+  "prompt": "상품을 오른쪽 45도에서 본 이미지",
+  "sourceImageUrl": "/images/products/product.png",
+  "options": {
+    "angle": 45,
+    "background": "transparent"
+  }
+}
+```
+
+`PRODUCT_ANGLE` 요청에서 `sourceImageUrl`을 생략하면 카드 상품의 `products.image_url`을 원본으로 사용한다. 생성이 끝나면 결과 이미지 URL은 `generatedImageUrl`, 이미지 외 결과는 `generatedData`에 저장한다. `generatedData`는 색상·패턴·레이아웃 등 최종 조합에 사용할 JSON 문자열이다.
+
+생성 상태는 `PENDING → COMPLETED | FAILED | REJECTED`로 관리하며, 기존 결과를 더 이상 후보로 노출하지 않을 때 `ARCHIVED`로 변경한다. 실제 AI provider 연결 전까지는 작업 이력 저장과 조회 API를 먼저 제공한다.
+
 ## 인증 API 상세
 
 ### 회원가입
@@ -176,3 +210,6 @@ Content-Type: application/json
 - `CARD_TEMPLATE_NOT_FOUND`: 발급 가능한 카드 템플릿 없음
 - `CUSTOMIZATION_NOT_FOUND`: 커스터마이징 이력 없음
 - `CUSTOMIZATION_NOT_COMPLETED`: 완료되지 않은 커스터마이징 선택 시도
+- `AI_RESOURCE_NOT_FOUND`: AI 리소스 생성 이력 없음
+- `TEMPLATE_INACTIVE`: 비활성 카드 템플릿 사용 시도
+- `TEMPLATE_CARD_TYPE_NOT_ALLOWED`: 카드 타입에 허용되지 않은 템플릿 사용 시도

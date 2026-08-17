@@ -50,6 +50,12 @@
   - `REJECTED`: 검수 또는 정책 기준을 통과하지 못한 결과
   - `ARCHIVED`: 정상 생성됐지만 현재 사용하지 않는 과거 이력
   - 선택 상태는 `cards.selected_customization_id`에서 관리한다.
+- `ai_resource_generations`: 카드에 조합할 AI 리소스 생성 요청과 결과 이력
+  - 카드 완성본을 직접 생성하는 테이블이 아니라 배경·테두리·패턴·상품 각도 이미지 등의 후보 리소스를 관리한다.
+  - `resource_type`: `BACKGROUND`, `BORDER`, `PATTERN`, `PRODUCT_ANGLE`, `DECORATION`, `COLOR_PALETTE`, `TEXT_STYLE`, `COMPOSITION`
+  - `generation_status`: `PENDING`, `COMPLETED`, `FAILED`, `REJECTED`, `ARCHIVED`
+  - `generated_data`에는 색상 조합, 레이아웃, 추천 옵션 등 이미지 외 결과를 JSON 문자열로 저장한다.
+  - 실제 선택된 조합은 기존 `card_customizations.customization_data`에 저장하고, 생성 이력은 삭제하지 않는다.
 
 ### 사용자 컬렉션·리워드
 
@@ -93,6 +99,9 @@ erDiagram
     CARD_TEMPLATES ||--o{ CARDS : uses
     CARDS ||--o{ CARD_CUSTOMIZATIONS : has_history
     CARDS ||--o| CARD_CUSTOMIZATIONS : selects
+    CARDS ||--o{ AI_RESOURCE_GENERATIONS : requests
+    PRODUCTS ||--o{ AI_RESOURCE_GENERATIONS : source
+    CARD_TEMPLATES ||--o{ AI_RESOURCE_GENERATIONS : guides
 
     COLLECTIONS ||--o{ COLLECTION_CARDS : contains
     CARDS ||--o{ COLLECTION_CARDS : collected
@@ -114,6 +123,8 @@ erDiagram
 - `card_customizations.card_id`는 유일하지 않으며, 카드별 복수 생성 이력을 허용한다.
 - `cards.selected_customization_id`는 해당 카드의 커스터마이징 이력을 참조한다.
 - 선택된 커스터마이징은 `COMPLETED` 상태인 결과만 참조해야 한다.
+- `ai_resource_generations`는 카드 소유자만 생성·조회할 수 있다.
+- AI 리소스 요청은 `PENDING`으로 먼저 저장하고, provider 처리 후 `COMPLETED`, `FAILED`, `REJECTED` 또는 `ARCHIVED`로 변경한다.
 - `physical_cards`는 현재 `digital_card_id`와 `user_reward_id` 각각에 유니크 제약이 있다.
 - 디지털 카드 하나당 실물 카드는 최대 1장만 발급한다.
 - QR 조회, 카드 생성, QR 사용 처리는 하나의 트랜잭션으로 처리해야 한다.

@@ -431,7 +431,61 @@ CREATE TABLE card_customizations (
 
 
 -- ============================================================
--- 12. USER COLLECTIONS
+-- 12. AI RESOURCE GENERATIONS
+-- ============================================================
+CREATE TABLE ai_resource_generations (
+    id CHAR(36) PRIMARY KEY,
+
+    card_id CHAR(36) NOT NULL,
+    product_id CHAR(36) NULL,
+    template_id CHAR(36) NULL,
+
+    resource_type VARCHAR(30) NOT NULL,
+    prompt VARCHAR(2000) NULL,
+    source_image_url VARCHAR(1000) NULL,
+    generated_image_url VARCHAR(1000) NULL,
+    generated_data JSON NULL,
+    ai_model VARCHAR(100) NULL,
+    generation_status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+    failure_reason VARCHAR(2000) NULL,
+
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_ai_resource_generations_card
+        FOREIGN KEY (card_id) REFERENCES cards(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_ai_resource_generations_product
+        FOREIGN KEY (product_id) REFERENCES products(id)
+        ON DELETE SET NULL,
+
+    CONSTRAINT fk_ai_resource_generations_template
+        FOREIGN KEY (template_id) REFERENCES card_templates(id)
+        ON DELETE SET NULL,
+
+    CONSTRAINT chk_ai_resource_generations_type
+        CHECK (resource_type IN (
+            'BACKGROUND', 'BORDER', 'PATTERN', 'PRODUCT_ANGLE',
+            'DECORATION', 'COLOR_PALETTE', 'TEXT_STYLE', 'COMPOSITION'
+        )),
+
+    CONSTRAINT chk_ai_resource_generations_status
+        CHECK (generation_status IN (
+            'PENDING', 'COMPLETED', 'FAILED', 'REJECTED', 'ARCHIVED'
+        )),
+
+    INDEX idx_ai_resource_generations_card_id (card_id),
+    INDEX idx_ai_resource_generations_product_id (product_id),
+    INDEX idx_ai_resource_generations_status (generation_status),
+    INDEX idx_ai_resource_generations_type (resource_type)
+) ENGINE=InnoDB;
+
+
+
+-- ============================================================
+-- 13. USER COLLECTIONS
 -- ============================================================
 CREATE TABLE collections (
     id CHAR(36) PRIMARY KEY,

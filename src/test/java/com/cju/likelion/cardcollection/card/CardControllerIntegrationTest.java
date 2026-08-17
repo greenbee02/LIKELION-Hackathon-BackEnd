@@ -167,6 +167,49 @@ class CardControllerIntegrationTest {
     }
 
     @Test
+    void aiResourceGenerationRequestIsStoredAsPendingAndCanBeQueried() throws Exception {
+        Fixture fixture = fixture(false);
+        String email = uniqueEmail();
+        signup(email);
+        String token = login(email);
+        String cardResponse = mockMvc.perform(post("/api/v1/cards/registrations")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"qrToken\":\"%s\"}".formatted(fixture.qrToken())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String cardId = objectMapper.readTree(cardResponse).path("data").path("id").asText();
+
+        String resourceResponse = mockMvc.perform(post("/api/v1/cards/" + cardId + "/ai-resources")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "resourceType": "PRODUCT_ANGLE",
+                                  "prompt": "상품을 오른쪽 45도에서 본 이미지",
+                                  "options": {"angle": 45, "background": "transparent"}
+                                }
+                                """))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.resourceType").value("PRODUCT_ANGLE"))
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.productId").value(fixture.product().getId().toString()))
+                .andReturn().getResponse().getContentAsString();
+        String resourceId = objectMapper.readTree(resourceResponse).path("data").path("id").asText();
+
+        mockMvc.perform(get("/api/v1/cards/" + cardId + "/ai-resources")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(resourceId));
+
+        mockMvc.perform(get("/api/v1/cards/" + cardId + "/ai-resources/" + resourceId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.generatedImageUrl").doesNotExist());
+    }
+
+    @Test
     void concurrentRegistrationAllowsOnlyOneRequest() throws Exception {
         Fixture fixture = fixture(false);
         User user = userRepository.save(User.builder()
