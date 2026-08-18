@@ -12,14 +12,15 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 /**
- * AI가 생성한 이미지 리소스를 ISO/IEC 7810 ID-1 카드 비율로 맞춘다.
- * 표준 실물 카드 크기 85.60 x 53.98mm의 비율은 약 1.586:1이다.
+ * AI가 생성한 이미지 리소스를 ISO/IEC 7810 ID-1 비율의 세로형 카드 캔버스로 맞춘다.
+ * 표준 실물 카드 크기 85.60 x 53.98mm의 비율을 세로 방향으로 적용하면
+ * 가로:세로가 약 1:1.586이 된다.
  */
 @Component
 public class CardAspectRatioImageNormalizer {
 
-    public static final int CARD_WIDTH = 1586;
-    public static final int CARD_HEIGHT = 1000;
+    public static final int CARD_WIDTH = 1000;
+    public static final int CARD_HEIGHT = 1586;
     private static final double CARD_ASPECT_RATIO = (double) CARD_WIDTH / CARD_HEIGHT;
 
     public AiImageResult normalize(AiImageResult source) {

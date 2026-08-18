@@ -2,6 +2,7 @@ package com.cju.likelion.cardcollection.ai.provider;
 
 import com.cju.likelion.cardcollection.ai.domain.AiResourceGeneration;
 import com.cju.likelion.cardcollection.ai.domain.AiResourceType;
+import com.cju.likelion.cardcollection.catalog.domain.Store;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +18,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -24,8 +27,8 @@ import java.util.UUID;
 public class OpenAiImageProvider implements AiImageProvider {
 
     private static final String CARD_CANVAS_INSTRUCTION =
-            "Use a landscape ISO/IEC 7810 ID-1 card canvas with an 85.60:53.98 aspect ratio "
-                    + "(approximately 1.586:1). Keep all important visual elements inside the card-safe area. ";
+            "Use a portrait ISO/IEC 7810 ID-1 card canvas with a 53.98:85.60 aspect ratio "
+                    + "(approximately 1:1.586, width:height). Keep all important visual elements inside the card-safe area. ";
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -209,9 +212,67 @@ public class OpenAiImageProvider implements AiImageProvider {
         String prompt = resource.getPrompt() == null ? "" : resource.getPrompt();
         String options = resource.getGeneratedData() == null ? "" :
                 " Design options JSON: " + resource.getGeneratedData();
-        return CARD_CANVAS_INSTRUCTION + typeInstruction
+        return CARD_CANVAS_INSTRUCTION + regionalInstruction(resource) + typeInstruction
                 + ". Do not create a complete branded card, logo, or unrelated text. "
                 + prompt + options;
+    }
+
+    private String regionalInstruction(AiResourceGeneration resource) {
+        if (!usesRegionalVisual(resource.getResourceType()) || resource.getCard().getPurchaseStore() == null) {
+            return "";
+        }
+
+        Store store = resource.getCard().getPurchaseStore();
+        String city = store.getCity() == null ? "" : store.getCity().trim();
+        String country = store.getCountry() == null ? "" : store.getCountry().trim();
+        if (city.isBlank()) return "";
+
+        List<String> landmarks = landmarksFor(city);
+        int variant = readRegionalVariant(resource.getGeneratedData());
+        String landmark = landmarks.get(Math.floorMod(variant, landmarks.size()));
+        String location = country.isBlank() ? city : country + ", " + city;
+
+        return "The purchase location is " + location + ". "
+                + "Create a refined, original regional visual inspired by " + landmark + ". "
+                + "Use the landmark as a tasteful silhouette, architectural detail, texture, or atmosphere; "
+                + "do not copy a photograph, use logos, or add readable text. "
+                + "This is regional variation " + (variant + 1) + ", so make it visibly different from other variations. ";
+    }
+
+    private boolean usesRegionalVisual(AiResourceType resourceType) {
+        return resourceType == AiResourceType.BACKGROUND
+                || resourceType == AiResourceType.PATTERN
+                || resourceType == AiResourceType.DECORATION
+                || resourceType == AiResourceType.COMPOSITION;
+    }
+
+    private int readRegionalVariant(String generatedData) {
+        if (generatedData == null || generatedData.isBlank()) return 0;
+        try {
+            return Math.max(0, objectMapper.readTree(generatedData).path("_regionalVariant").asInt(0));
+        } catch (IOException ignored) {
+            return 0;
+        }
+    }
+
+    private List<String> landmarksFor(String city) {
+        String normalizedCity = city.toLowerCase(Locale.ROOT);
+        if (normalizedCity.contains("서울") || normalizedCity.contains("seoul")) {
+            return List.of("Gwanghwamun Gate", "N Seoul Tower", "the Han River night skyline", "Bukchon tiled rooftops");
+        }
+        if (normalizedCity.contains("부산") || normalizedCity.contains("busan")) {
+            return List.of("Gwangan Bridge", "Haeundae coastline", "Gamcheon hillside houses", "Busan harbor lights");
+        }
+        if (normalizedCity.contains("제주") || normalizedCity.contains("jeju")) {
+            return List.of("Hallasan mountain", "Jeju basalt stone walls", "Seongsan Ilchulbong", "the Jeju coast");
+        }
+        if (normalizedCity.contains("도쿄") || normalizedCity.contains("tokyo")) {
+            return List.of("Tokyo Tower", "Asakusa temple rooftops", "Shibuya night lights", "the Tokyo skyline");
+        }
+        if (normalizedCity.contains("뉴욕") || normalizedCity.contains("new york")) {
+            return List.of("the Manhattan skyline", "Brooklyn Bridge", "Central Park geometry", "Art Deco city details");
+        }
+        return List.of(city + " local architecture and landscape");
     }
 
     private String errorMessage(String body) {

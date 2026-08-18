@@ -2,6 +2,7 @@ package com.cju.likelion.cardcollection.ai.controller;
 
 import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationRequest;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationResponse;
+import com.cju.likelion.cardcollection.ai.dto.AiResourceBatchGenerationRequest;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceCompositionRequest;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceCompositionResponse;
 import com.cju.likelion.cardcollection.ai.service.AiResourceCompositionService;
@@ -44,6 +45,17 @@ public class AiResourceGenerationController {
     ) {
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(new ApiResponse<>(
                 service.request(userId(authentication), cardId, request)
+        ));
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<ApiResponse<List<AiResourceGenerationResponse>>> requestBatch(
+            Authentication authentication,
+            @PathVariable UUID cardId,
+            @Valid @RequestBody AiResourceBatchGenerationRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(new ApiResponse<>(
+                service.requestBatch(userId(authentication), cardId, request)
         ));
     }
 

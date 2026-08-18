@@ -1,6 +1,8 @@
 package com.cju.likelion.cardcollection.ai.service;
 
 import com.cju.likelion.cardcollection.ai.domain.AiResourceGeneration;
+import com.cju.likelion.cardcollection.ai.domain.AiResourceType;
+import com.cju.likelion.cardcollection.ai.dto.AiResourceBatchGenerationRequest;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationRequest;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationResponse;
 import com.cju.likelion.cardcollection.ai.repository.AiResourceGenerationRepository;
@@ -16,7 +18,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -47,12 +53,43 @@ public class AiResourceGenerationService {
     ) {
         Card card = findCard(userId, cardId);
         requireActive(card);
+        AiResourceGeneration resource = createResource(card, request, nextRegionalVariant(card.getId(), 0));
+        return AiResourceGenerationResponse.from(resourceRepository.save(resource));
+    }
+
+    @Transactional
+    public List<AiResourceGenerationResponse> requestBatch(
+            UUID userId,
+            UUID cardId,
+            AiResourceBatchGenerationRequest batchRequest
+    ) {
+        Card card = findCard(userId, cardId);
+        requireActive(card);
+
+        int startingVariant = nextRegionalVariant(cardId, 0);
+        List<AiResourceGenerationResponse> responses = new ArrayList<>();
+        for (int index = 0; index < batchRequest.resources().size(); index++) {
+            AiResourceGeneration resource = createResource(
+                    card,
+                    batchRequest.resources().get(index),
+                    startingVariant + index
+            );
+            responses.add(AiResourceGenerationResponse.from(resourceRepository.save(resource)));
+        }
+        return responses;
+    }
+
+    private AiResourceGeneration createResource(
+            Card card,
+            AiResourceGenerationRequest request,
+            int regionalVariant
+    ) {
         CardTemplate template = resolveTemplate(card, request.templateId());
         String sourceImageUrl = request.sourceImageUrl() != null
                 ? request.sourceImageUrl()
                 : card.getProduct().getImageUrl();
 
-        if (request.resourceType().name().equals("PRODUCT_ANGLE") && sourceImageUrl == null) {
+        if (request.resourceType() == AiResourceType.PRODUCT_ANGLE && sourceImageUrl == null) {
             throw error(
                     "AI_SOURCE_IMAGE_REQUIRED",
                     "상품 각도 이미지 생성에는 원본 상품 이미지가 필요합니다.",
@@ -60,17 +97,39 @@ public class AiResourceGenerationService {
             );
         }
 
-        AiResourceGeneration resource = AiResourceGeneration.pending(
+        return AiResourceGeneration.pending(
                 card,
                 card.getProduct(),
                 template,
                 request.resourceType(),
                 request.prompt(),
                 sourceImageUrl,
-                serializeOptions(request.options()),
+                serializeOptions(enrichOptions(request.options(), regionalVariant)),
                 Instant.now()
         );
-        return AiResourceGenerationResponse.from(resourceRepository.save(resource));
+    }
+
+    private Map<String, Object> enrichOptions(Map<String, Object> options, int regionalVariant) {
+        Map<String, Object> enriched = new LinkedHashMap<>();
+        if (options != null) enriched.putAll(options);
+        enriched.putIfAbsent("_regionalVariant", regionalVariant);
+        return enriched;
+    }
+
+    private int nextRegionalVariant(UUID cardId, int offset) {
+        long existing = resourceRepository.findByCardIdOrderByCreatedAtDesc(cardId).stream()
+                .filter(resource -> isRegionalResource(resource.getResourceType()))
+                .count();
+        return Math.toIntExact(existing) + offset;
+    }
+
+    private boolean isRegionalResource(AiResourceType resourceType) {
+        return Set.of(
+                AiResourceType.BACKGROUND,
+                AiResourceType.PATTERN,
+                AiResourceType.DECORATION,
+                AiResourceType.COMPOSITION
+        ).contains(resourceType);
     }
 
     @Transactional(readOnly = true)

@@ -241,6 +241,47 @@ class CardControllerIntegrationTest {
     }
 
     @Test
+    void aiResourceBatchStoresThreeIndependentPendingResources() throws Exception {
+        Fixture fixture = fixture(false);
+        String email = uniqueEmail();
+        signup(email);
+        String token = login(email);
+        String cardResponse = mockMvc.perform(post("/api/v1/cards/registrations")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"qrToken\":\"%s\"}".formatted(fixture.qrToken())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String cardId = objectMapper.readTree(cardResponse).path("data").path("id").asText();
+
+        String batchResponse = mockMvc.perform(post("/api/v1/cards/" + cardId + "/ai-resources/batch")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "resources": [
+                                    {"resourceType":"BACKGROUND","prompt":"서울 지역 배경","options":{"style":"luxury"}},
+                                    {"resourceType":"BORDER","prompt":"서울 지역 테두리","options":{"color":"gold"}},
+                                    {"resourceType":"PATTERN","prompt":"서울 지역 패턴","options":{"density":"light"}}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.data[1].status").value("PENDING"))
+                .andExpect(jsonPath("$.data[2].status").value("PENDING"))
+                .andReturn().getResponse().getContentAsString();
+
+        JsonNode resources = objectMapper.readTree(batchResponse).path("data");
+        assertThat(resources.get(0).path("id").asText()).isNotEqualTo(resources.get(1).path("id").asText());
+        assertThat(resources.get(1).path("id").asText()).isNotEqualTo(resources.get(2).path("id").asText());
+        assertThat(resources.get(0).path("generatedData").asText()).contains("_regionalVariant");
+        assertThat(resources.get(1).path("generatedData").asText()).contains("_regionalVariant");
+        assertThat(resources.get(2).path("generatedData").asText()).contains("_regionalVariant");
+    }
+
+    @Test
     void aiWorkerCompletesPendingResourceAndStoresGeneratedImageUrl() throws Exception {
         Fixture fixture = fixture(false);
         String email = uniqueEmail();

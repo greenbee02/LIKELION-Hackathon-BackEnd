@@ -145,12 +145,15 @@ POST /cards/{cardId}/customizations
 POST /cards/{cardId}/customizations/{customizationId}/select
 POST /cards/{cardId}/restore-original
 POST /cards/{cardId}/ai-resources
+POST /cards/{cardId}/ai-resources/batch
 GET  /cards/{cardId}/ai-resources
 GET  /cards/{cardId}/ai-resources/{resourceId}
 POST /cards/{cardId}/ai-resources/compose
 ```
 
 요청·응답 예시는 [api-contract.md](./api-contract.md)를 기준으로 한다.
+
+배치 생성은 3~4개의 AI 리소스를 한 번에 등록한다. 카드의 구매 매장 도시를 기반으로 지역 문맥과 변형 번호를 자동 부여하므로, 서울 구매 건은 광화문·남산·한강 등 서로 다른 지역 후보를 사용한다. 각 결과가 `COMPLETED`가 된 뒤 사용자가 원하는 리소스만 조합한다.
 
 ## 6. 실제 AI 연동 상태
 

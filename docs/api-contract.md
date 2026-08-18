@@ -117,12 +117,41 @@ DECORATION | COLOR_PALETTE | TEXT_STYLE | COMPOSITION
 
 ```text
 POST /api/v1/cards/{cardId}/ai-resources
+POST /api/v1/cards/{cardId}/ai-resources/batch
 GET  /api/v1/cards/{cardId}/ai-resources
 GET  /api/v1/cards/{cardId}/ai-resources/{resourceId}
 POST /api/v1/cards/{cardId}/ai-resources/compose
 ```
 
 생성 요청은 비동기 처리를 위해 `202 Accepted`와 함께 `PENDING` 이력을 반환한다. 백그라운드 worker가 PENDING 작업을 OpenAI Images API로 처리한 뒤 결과 이미지 URL과 상태를 갱신한다.
+
+한 번에 3~4개의 후보 리소스를 생성하려면 배치 API를 사용한다. 각 항목은 독립적인 `PENDING` 이력으로 저장되며, 사용자는 완료된 결과 중 원하는 배경·테두리·패턴·상품 각도 등을 선택해 조합한다.
+
+`POST /api/v1/cards/{cardId}/ai-resources/batch`
+
+```json
+{
+  "resources": [
+    {
+      "resourceType": "BACKGROUND",
+      "prompt": "고급스럽고 차분한 서울 지역 배경",
+      "options": { "style": "luxury", "color": "black" }
+    },
+    {
+      "resourceType": "BORDER",
+      "prompt": "서울의 건축 디테일에서 영감을 받은 테두리",
+      "options": { "color": "gold" }
+    },
+    {
+      "resourceType": "PATTERN",
+      "prompt": "상품 카드에 사용할 절제된 지역 패턴",
+      "options": { "density": "light" }
+    }
+  ]
+}
+```
+
+배치 요청은 3~4개 항목만 허용한다. 구매 카드의 `purchase_store.city`를 기준으로 지역 문맥을 자동 추가하며, 서울은 광화문·남산서울타워·한강 야경·북촌 기와 등 후보를 순환해 같은 카드에서 생성되는 리소스가 서로 다른 지역 변형을 사용하도록 한다. 지역이 등록되지 않은 경우에는 매장 도시의 지역 건축·풍경을 일반 문맥으로 사용한다.
 
 ```json
 {
@@ -143,7 +172,7 @@ POST /api/v1/cards/{cardId}/ai-resources/compose
 
 생성 상태는 `PENDING → COMPLETED | FAILED | REJECTED`로 관리하며, 기존 결과를 더 이상 후보로 노출하지 않을 때 `ARCHIVED`로 변경한다. 생성 요청은 worker가 실제 AI provider에 전달하고 결과를 갱신한다.
 
-모든 AI 이미지 리소스는 ISO/IEC 7810 ID-1 카드 비율을 기준으로 생성한다. API 요청은 가로형 `1536x1024`를 기본으로 사용하고, 저장 직전에 중앙 크롭·리사이즈하여 최종 결과를 약 `1.586:1`(85.60×53.98mm) 비율로 맞춘다. 중요한 요소는 카드 안전 영역 안에 배치하도록 프롬프트에 포함한다.
+모든 AI 이미지 리소스는 ISO/IEC 7810 ID-1 비율을 세로 방향으로 적용한다. API 요청은 세로형 `1024x1536`을 기본으로 사용하고, 저장 직전에 중앙 크롭·리사이즈하여 최종 결과를 `1000x1586`으로 맞춘다. 비율은 가로:세로 약 `1:1.586`이며, 중요한 요소는 카드 안전 영역 안에 배치하도록 프롬프트에 포함한다.
 
 ### AI 리소스 조합 및 카드 적용
 

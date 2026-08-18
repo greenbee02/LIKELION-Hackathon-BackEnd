@@ -34,12 +34,12 @@
 
 ### 2.3 AI 카드 리소스 비율 표준화
 
-AI가 생성하는 배경·테두리·패턴·상품 각도 등의 이미지가 정사각형으로 저장되지 않도록 국제 카드 표준인 ISO/IEC 7810 ID-1 비율을 적용했다.
+AI가 생성하는 배경·테두리·패턴·상품 각도 등의 이미지가 정사각형으로 저장되지 않도록 국제 카드 표준인 ISO/IEC 7810 ID-1 비율을 세로 방향으로 적용했다.
 
 - 기준 비율: 85.60×53.98mm, 약 `1.586:1`
-- OpenAI 요청 기본 크기: `1536x1024` 가로형
-- 저장 전처리: 중앙 크롭 후 `1586x1000`으로 리사이즈
-- 프롬프트: 가로형 카드 캔버스와 안전 영역 사용 지시 추가
+- OpenAI 요청 기본 크기: `1024x1536` 세로형
+- 저장 전처리: 중앙 크롭 후 `1000x1586`으로 리사이즈
+- 프롬프트: 세로형 카드 캔버스와 안전 영역 사용 지시 추가
 - 적용 위치: AI Worker가 provider 결과를 이미지 저장소에 저장하기 직전
 
 ### 2.2 AI 배경 생성 경로 수정
@@ -107,6 +107,41 @@ QR은 1회만 사용할 수 있으므로 이미 사용된 QR은 재사용하지 
 - `BORDER` 실제 생성: `COMPLETED`
 - 생성 이미지 URL 접근 및 로컬 저장소 조회
 
+### 2.5 지역 기반 AI 리소스 및 배치 생성
+
+구매 매장에 따라 카드 리소스의 분위기가 달라지도록 카드의 `purchaseStore.city`를 AI 프롬프트에 자동으로 반영했다.
+
+- 서울: 광화문, 남산서울타워, 한강 야경, 북촌 기와 후보 사용
+- 부산: 광안대교, 해운대, 감천문화마을, 부산항 후보 사용
+- 제주: 한라산, 현무암 돌담, 성산일출봉, 제주 해안 후보 사용
+- 도쿄·뉴욕 등 주요 도시 후보 지원
+- 등록되지 않은 도시는 해당 도시의 지역 건축·풍경을 일반 문맥으로 사용
+- 같은 카드에서 이미 사용한 지역 변형 번호를 확인해 다음 후보를 사용
+- 이미지·로고·읽을 수 있는 문구를 그대로 복제하지 않고 지역의 실루엣·건축·분위기만 참고하도록 프롬프트 구성
+
+기존에는 AI 리소스를 한 번에 하나씩 요청했지만, 다음 배치 API를 추가했다.
+
+~~~text
+POST /api/v1/cards/{cardId}/ai-resources/batch
+~~~
+
+- 한 번에 3~4개 요청
+- 각 리소스는 독립적인 `PENDING` 이력으로 저장
+- `BACKGROUND`, `BORDER`, `PATTERN`, `PRODUCT_ANGLE` 등 서로 다른 유형을 조합 가능
+- 완료된 결과는 기존 `compose` API에서 사용자가 선택해 카드에 적용
+
+현재 worker는 배치 요청을 한 번에 접수한 뒤 PENDING 작업을 순차 처리한다. 실제 AI 요청을 병렬로 실행하려면 작업 점유 상태와 동시성 제어를 추가해야 한다.
+
+수정 파일:
+
+~~~text
+src/main/java/com/cju/likelion/cardcollection/ai/dto/AiResourceBatchGenerationRequest.java
+src/main/java/com/cju/likelion/cardcollection/ai/controller/AiResourceGenerationController.java
+src/main/java/com/cju/likelion/cardcollection/ai/service/AiResourceGenerationService.java
+src/main/java/com/cju/likelion/cardcollection/ai/provider/OpenAiImageProvider.java
+src/test/java/com/cju/likelion/cardcollection/card/CardControllerIntegrationTest.java
+~~~
+
 초기에는 다음 제한으로 실패했지만, 이후 계정 설정을 해결한 뒤 재검증에 성공했다.
 
 ~~~text
@@ -155,12 +190,21 @@ POST /api/v1/cards/{cardId}/restore-original
 
 ~~~text
 POST /api/v1/cards/{cardId}/ai-resources
+POST /api/v1/cards/{cardId}/ai-resources/batch
 GET  /api/v1/cards/{cardId}/ai-resources
 GET  /api/v1/cards/{cardId}/ai-resources/{resourceId}
 POST /api/v1/cards/{cardId}/ai-resources/compose
 ~~~
 
 지원 리소스 유형은 BACKGROUND, BORDER, PATTERN, PRODUCT_ANGLE, DECORATION, COLOR_PALETTE, TEXT_STYLE, COMPOSITION이다.
+
+### AI 지역 문맥 및 배치 생성
+
+- 카드의 구매 매장 `stores.city`를 AI 프롬프트에 자동 반영한다.
+- 서울은 광화문, 남산서울타워, 한강 야경, 북촌 기와 등 지역 후보를 순환 사용한다.
+- 같은 카드에서 이전에 사용한 지역 변형 수를 기준으로 다음 후보를 선택해 반복을 줄인다.
+- `POST /api/v1/cards/{cardId}/ai-resources/batch`로 3~4개 리소스를 한 번에 `PENDING` 등록한다.
+- 각 항목은 독립적인 생성 이력으로 저장되며, 완료 후 기존 compose API에서 원하는 결과만 조합한다.
 
 ## 4. 실행 및 검증 방법
 
@@ -241,15 +285,61 @@ API 계약 문서와 실제 응답 일치
 
 OpenAI 계정 한도 문제가 해결된 후 진행한다.
 
-1. gpt-image-2 배경 생성
-2. 테두리 생성
+1. ~~gpt-image-2 배경 생성~~ (작업 완료)
+2. ~~테두리 생성~~ (작업 완료)
 3. PRODUCT_ANGLE 상품 각도 생성
-4. COMPLETED와 generatedImageUrl 확인
-5. FAILED, REJECTED, 타임아웃 확인
-6. AI 리소스 조합 API로 카드 적용
-7. 비용과 응답 시간 기록
+4. 지역 기반 배경 3~4개 배치 생성
+5. 각 결과의 `COMPLETED`와 `generatedImageUrl` 확인
+6. `FAILED`, `REJECTED`, 타임아웃 확인
+7. AI 리소스 조합 API로 카드 적용
+8. 비용과 응답 시간 기록
 
 현재 생성 결과는 build/generated-ai-resources에 저장된다. 운영 배포 전 S3 등 영구 저장소로 교체한다.
+
+### 2.5순위: 지역 배치 생성 및 카드 편집 연동
+
+오늘 추가한 기능을 실제 사용자 흐름으로 검증한다.
+
+1. 서버 재시작 후 `/ai-resources/batch` 호출
+2. 서울·부산·제주 매장별 배경 후보 생성
+3. 같은 카드에서 두 번째 배치 요청 시 지역 후보 중복 여부 확인
+4. 3~4개 결과가 모두 `COMPLETED`가 될 때까지 상태 조회
+5. 완료된 배경·테두리·패턴 중 원하는 리소스만 `compose`에 전달
+6. 카드가 `CUSTOMIZE`로 변경되고 `card_customizations.customization_data`에 조합 정보가 저장되는지 확인
+
+### 2.6순위: TEXT_STYLE·COLOR_PALETTE 구조화 추천
+
+현재 `TEXT_STYLE`과 `COLOR_PALETTE`도 이미지 리소스 생성 경로를 사용한다. 사용자가 직접 배치하려면 이미지보다 구조화된 추천 데이터가 필요하다.
+
+- `TEXT_STYLE` 추천 JSON 정의
+  - 폰트 계열, 굵기, 크기, 자간, 줄 간격
+  - 글자 색상, 정렬, 최대 줄 수
+  - 카드 안전 영역과 위치 힌트
+- `COLOR_PALETTE` 추천 JSON 정의
+  - 주 색상, 보조 색상, 포인트 색상, 대비 색상
+- AI 결과를 프론트엔드 미리보기 카드로 표시
+- 선택된 추천값을 `layoutData`와 `customization_data`에 저장
+
+### 2.7순위: 프론트엔드 카드 편집기 연동
+
+AI는 추천값과 리소스를 제공하고, 실제 배치 조작은 프론트엔드가 담당한다.
+
+- 텍스트·배경·테두리·상품 이미지 레이어 표시
+- 드래그, 크기 조절, 회전, 정렬, 투명도 조절
+- 카드 세로 비율 `1000x1586` 유지
+- 안전 영역 밖 요소 경고
+- 편집 완료 시 `POST /api/v1/cards/{cardId}/ai-resources/compose` 호출
+- 저장 후 카드 상세에서 선택된 커스터마이징 조회
+
+### 2.8순위: 실제 동시 처리 및 운영 저장소
+
+- worker에 PENDING 작업 점유 상태 추가
+- 동일 리소스의 중복 처리 방지
+- 3~4개 AI 요청 병렬 처리 여부 결정
+- OpenAI rate limit에 맞춘 동시 실행 수 제한
+- 실패한 작업 재시도 정책 확정
+- `build/generated-ai-resources`를 S3 등 영구 저장소로 교체
+- 이미지 접근 권한과 만료 URL 정책 확정
 
 ### 3순위: 사용자 컬렉션 구현
 
@@ -323,4 +413,30 @@ OpenAI 계정 한도 문제가 해결된 후 진행한다.
 
 ## 8. 현재 작업 인수인계 결론
 
-다음 작업자는 먼저 상품·카드 API 통합 테스트를 보강한다. 테스트가 통과하면 OpenAI 한도 문제 해결 여부를 확인하고 실제 AI 생성 검증을 진행한다. 그 후 사용자 컬렉션의 공개 범위·달성률 규칙을 확정한 뒤 V6 마이그레이션부터 컬렉션 구현을 시작한다.
+다음 작업자는 먼저 상품·카드 API 통합 테스트를 보강하고, 오늘 추가한 지역 기반 배치 생성 API를 실제 서버에서 검증한다. 이후 `PRODUCT_ANGLE`을 테스트하고 `TEXT_STYLE`·`COLOR_PALETTE` 구조화 추천과 프론트엔드 카드 편집기를 연결한다. AI 편집 흐름이 안정화되면 사용자 컬렉션의 공개 범위·달성률 규칙을 확정한 뒤 V6 마이그레이션부터 컬렉션 구현을 시작한다.
+
+## 9. 2026-08-19 작업 완료 요약
+
+~~~text
+[작업 완료] 세로형 AI 카드 이미지 규격 적용
+  - OpenAI 요청 기본 크기: 1024x1536
+  - 최종 저장 크기: 1000x1586
+  - 중앙 크롭·리사이즈 및 안전 영역 프롬프트 적용
+
+[작업 완료] 실제 OpenAI 이미지 생성 검증
+  - BACKGROUND COMPLETED
+  - BORDER COMPLETED
+  - generatedImageUrl 접근 확인
+
+[작업 완료] 구매 지역 기반 AI 프롬프트
+  - purchaseStore.city 자동 반영
+  - 지역 대표 요소 후보 순환
+  - 같은 카드의 반복 후보 감소
+
+[작업 완료] AI 리소스 배치 생성 API
+  - 3~4개 리소스 일괄 PENDING 등록
+  - 기존 단건 API와 compose API 유지
+  - 통합 테스트 통과
+~~~
+
+다음 작업자는 먼저 서버를 재시작하고 `POST /api/v1/cards/{cardId}/ai-resources/batch`를 호출해 실제 지역 기반 결과를 확인한다. 그 다음 `PRODUCT_ANGLE` → 구조화된 `TEXT_STYLE` 추천 → 프론트엔드 레이어 편집기 → 실제 병렬 worker 순서로 진행한다.
