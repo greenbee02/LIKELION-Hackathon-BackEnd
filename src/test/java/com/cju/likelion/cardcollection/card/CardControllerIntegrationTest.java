@@ -9,6 +9,11 @@ import com.cju.likelion.cardcollection.card.exception.CardDomainException;
 import com.cju.likelion.cardcollection.card.repository.CardRepository;
 import com.cju.likelion.cardcollection.card.repository.PurchaseQrRepository;
 import com.cju.likelion.cardcollection.card.service.CardService;
+import com.cju.likelion.cardcollection.ai.provider.AiImageProvider;
+import com.cju.likelion.cardcollection.ai.provider.AiImageResult;
+import com.cju.likelion.cardcollection.ai.repository.AiResourceGenerationRepository;
+import com.cju.likelion.cardcollection.ai.storage.GeneratedImageStorage;
+import com.cju.likelion.cardcollection.ai.worker.AiResourceGenerationWorker;
 import com.cju.likelion.cardcollection.catalog.domain.Brand;
 import com.cju.likelion.cardcollection.catalog.domain.CardTemplate;
 import com.cju.likelion.cardcollection.catalog.domain.Product;
@@ -36,6 +41,9 @@ import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -74,6 +82,9 @@ class CardControllerIntegrationTest {
 
     @Autowired
     private CardService cardService;
+
+    @Autowired
+    private AiResourceGenerationRepository aiResourceRepository;
 
     @Test
     void registerListAndGetCard() throws Exception {
@@ -187,6 +198,7 @@ class CardControllerIntegrationTest {
                                 {
                                   "resourceType": "PRODUCT_ANGLE",
                                   "prompt": "상품을 오른쪽 45도에서 본 이미지",
+                                  "sourceImageUrl": "https://example.com/product.png",
                                   "options": {"angle": 45, "background": "transparent"}
                                 }
                                 """))
@@ -196,6 +208,13 @@ class CardControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.productId").value(fixture.product().getId().toString()))
                 .andReturn().getResponse().getContentAsString();
         String resourceId = objectMapper.readTree(resourceResponse).path("data").path("id").asText();
+
+        mockMvc.perform(post("/api/v1/cards/" + cardId + "/ai-resources/compose")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"resourceIds\":[\"%s\"]}".formatted(resourceId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("AI_RESOURCE_NOT_COMPLETED"));
 
         mockMvc.perform(get("/api/v1/cards/" + cardId + "/ai-resources")
                         .header("Authorization", "Bearer " + token))
@@ -207,6 +226,70 @@ class CardControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("PENDING"))
                 .andExpect(jsonPath("$.data.generatedImageUrl").doesNotExist());
+    }
+
+    @Test
+    void aiWorkerCompletesPendingResourceAndStoresGeneratedImageUrl() throws Exception {
+        Fixture fixture = fixture(false);
+        String email = uniqueEmail();
+        signup(email);
+        String token = login(email);
+        String cardResponse = mockMvc.perform(post("/api/v1/cards/registrations")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"qrToken\":\"%s\"}".formatted(fixture.qrToken())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String cardId = objectMapper.readTree(cardResponse).path("data").path("id").asText();
+
+        String resourceResponse = mockMvc.perform(post("/api/v1/cards/" + cardId + "/ai-resources")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"resourceType\":\"BACKGROUND\",\"prompt\":\"dark velvet\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andReturn().getResponse().getContentAsString();
+        UUID resourceId = UUID.fromString(objectMapper.readTree(resourceResponse).path("data").path("id").asText());
+
+        AiImageProvider provider = mock(AiImageProvider.class);
+        GeneratedImageStorage storage = mock(GeneratedImageStorage.class);
+        when(provider.generate(any())).thenReturn(new AiImageResult(
+                new byte[]{1, 2, 3}, "image/png", "test-image-model"));
+        when(storage.store(any(), any(), any())).thenReturn("/generated/ai-resources/" + resourceId + ".png");
+
+        new AiResourceGenerationWorker(
+                aiResourceRepository,
+                provider,
+                storage,
+                true,
+                "test-api-key"
+        ).process(resourceId);
+
+        mockMvc.perform(get("/api/v1/cards/" + cardId + "/ai-resources/" + resourceId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.generatedImageUrl")
+                        .value("/generated/ai-resources/" + resourceId + ".png"));
+
+        String compositionResponse = mockMvc.perform(post("/api/v1/cards/" + cardId + "/ai-resources/compose")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "resourceIds": ["%s"],
+                                  "message": "나만의 카드",
+                                  "layoutData": {"productX": 0.5, "productY": 0.55}
+                                }
+                                """.formatted(resourceId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.card.id").value(cardId))
+                .andExpect(jsonPath("$.data.card.cardType").value("CUSTOMIZE"))
+                .andExpect(jsonPath("$.data.card.selectedCustomization.id").exists())
+                .andExpect(jsonPath("$.data.customization.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.customization.aiModel").value("composition-v1"))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(compositionResponse).contains(resourceId.toString());
     }
 
     @Test

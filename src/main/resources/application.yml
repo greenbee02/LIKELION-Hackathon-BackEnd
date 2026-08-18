@@ -25,3 +25,19 @@ app:
   jwt:
     secret: ${JWT_SECRET:local-development-secret-change-this-value-please-1234567890}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  ai:
+    provider: ${AI_PROVIDER:openai}
+    worker:
+      fixed-delay-ms: ${AI_WORKER_FIXED_DELAY_MS:5000}
+    storage:
+      path: ${AI_STORAGE_PATH:build/generated-ai-resources}
+      public-base-url: ${AI_STORAGE_PUBLIC_BASE_URL:/generated/ai-resources}
+    openai:
+      enabled: ${AI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      model: ${OPENAI_IMAGE_MODEL:gpt-image-2}
+      size: ${OPENAI_IMAGE_SIZE:1024x1024}
+      quality: ${OPENAI_IMAGE_QUALITY:low}
+      background: ${OPENAI_IMAGE_BACKGROUND:auto}
+      output-format: ${OPENAI_IMAGE_OUTPUT_FORMAT:png}

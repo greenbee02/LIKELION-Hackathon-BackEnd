@@ -197,11 +197,12 @@ user_reward_id
 
 ## 5. Flyway 마이그레이션
 
-기존 V1~V3는 수정하지 않고 V4를 추가했다.
+기존 V1~V3는 수정하지 않고 V4와 V5를 추가했다.
 
 파일:
 
 src/main/resources/db/migration/V4__expand_product_and_card_domain.sql
+src/main/resources/db/migration/V5__add_ai_resource_generations.sql
 
 데이터 이전 전략:
 
@@ -290,6 +291,7 @@ POST /api/v1/cards/{cardId}/restore-original
 - `ai_resource_generations`는 카드·상품·템플릿·요청 옵션·생성 결과·처리 상태를 저장한다.
 - 생성 요청은 `PENDING`으로 저장하고, 실제 provider가 결과를 저장할 수 있도록 `COMPLETED`, `FAILED`, `REJECTED`, `ARCHIVED` 상태를 둔다.
 - 최종 사용자가 선택한 리소스 조합은 기존 `card_customizations.customization_data`에 기록한다.
+- 완료된 AI 리소스 조합 API를 통해 카드에 적용할 수 있다.
 
 API:
 
@@ -297,9 +299,22 @@ API:
 POST /api/v1/cards/{cardId}/ai-resources
 GET  /api/v1/cards/{cardId}/ai-resources
 GET  /api/v1/cards/{cardId}/ai-resources/{resourceId}
+POST /api/v1/cards/{cardId}/ai-resources/compose
 ~~~
 
-현재 구현은 실제 AI 호출 없이 생성 요청을 `PENDING`으로 저장한다. 다음 단계에서 provider worker가 PENDING 작업을 가져가 이미지 저장소와 AI 모델을 호출하고 결과 상태를 갱신해야 한다.
+현재 구현은 OpenAI Images API를 provider로 연결할 수 있다. 생성 요청은 `PENDING`으로 저장되고, 활성화된 백그라운드 worker가 작업을 가져가 이미지를 생성한 뒤 로컬 이미지 저장소에 저장하고 상태를 갱신한다. 테스트·로컬 기본값은 외부 비용이 발생하지 않도록 `AI_ENABLED=false`다.
+
+환경변수:
+
+~~~powershell
+$env:AI_ENABLED = "true"
+$env:OPENAI_API_KEY = "발급받은_API_KEY"
+$env:OPENAI_IMAGE_MODEL = "gpt-image-2"
+~~~
+
+생성 결과는 기본적으로 `build/generated-ai-resources`에 저장되고 `/generated/ai-resources/**` 경로로 제공된다. 운영 환경에서는 S3 등 영구 저장소 구현으로 교체해야 한다.
+
+worker는 생성 완료·실패 시 `resourceId`, 상태, 모델명, `durationMs`를 로그로 남긴다. 실제 비용은 API 키가 연결된 OpenAI 사용량·청구 화면에서 생성 건수와 함께 확인한다.
 
 ## 8. 검증 결과
 
@@ -320,7 +335,7 @@ GET  /api/v1/cards/{cardId}/ai-resources/{resourceId}
 
 ### PostgreSQL
 
-PostgreSQL 16.15에서 V1~V4 마이그레이션과 애플리케이션 기동을 검증했다.
+PostgreSQL 16.15에서 V1~V4 마이그레이션과 애플리케이션 기동을 검증했다. V5와 AI worker는 H2 통합 테스트에서 검증했으며, OpenAI 실 API 호출은 API 키 설정 후 별도 운영 검증이 필요하다.
 
 ~~~text
 Successfully validated 4 migrations
@@ -382,12 +397,9 @@ GET /api/v1/cards/{cardId}/templates
 
 ### 3순위: 실제 AI 리소스 처리
 
-- `ai_resource_generations`의 PENDING 작업을 처리하는 worker 추가
-- 이미지 생성 provider와 API 키·모델 설정 연결
-- 생성 결과를 영구 이미지 저장소에 업로드
-- AI 성공·실패·검수 거절 처리
-- 생성 결과를 `card_customizations.customization_data`에 선택 저장
-- 사용자가 선택한 배경·테두리·상품 각도 이미지를 조합해 미리보기 제공
+- 운영용 영구 이미지 저장소(S3 등) 연결
+- AI 생성 결과 검수 정책 세분화
+- 생성 결과 미리보기 API 및 프론트 조합 화면 연결
 
 ### 4순위: 사용자 컬렉션
 
@@ -409,10 +421,11 @@ GET /api/v1/cards/{cardId}/templates
 1. docs/erd.md
 2. DataBase/Schema.sql
 3. src/main/resources/db/migration/V4__expand_product_and_card_domain.sql
-4. src/main/java/com/cju/likelion/cardcollection/card/service/CardService.java
-5. src/main/java/com/cju/likelion/cardcollection/card/controller/CardController.java
-6. src/test/java/com/cju/likelion/cardcollection/card/CardControllerIntegrationTest.java
-7. docs/api-contract.md
+4. src/main/resources/db/migration/V5__add_ai_resource_generations.sql
+5. src/main/java/com/cju/likelion/cardcollection/ai/provider/OpenAiImageProvider.java
+6. src/main/java/com/cju/likelion/cardcollection/ai/worker/AiResourceGenerationWorker.java
+7. src/test/java/com/cju/likelion/cardcollection/card/CardControllerIntegrationTest.java
+8. docs/api-contract.md
 
 ## 11. 실행 방법
 
@@ -455,8 +468,9 @@ Started CardCollectionApplication
 ## 12. 주의사항
 
 - 기존 Flyway V1~V3는 수정하지 않는다.
-- 새 DB 변경은 V5 이후 새 마이그레이션으로 추가한다.
+- 새 DB 변경은 V6 이후 새 마이그레이션으로 추가한다.
 - DataBase/Schema.sql은 MySQL 참고용이고, 실제 애플리케이션 DB 기준은 Flyway SQL이다.
 - 카드 커스터마이징은 현재 Mock 방식이다.
+- AI 리소스 생성은 OpenAI provider와 worker가 연결되어 있으며, `AI_ENABLED=false`가 기본값이다.
 - 컬렉션·리워드·이벤트·실물 카드 Entity와 API는 아직 구현 전이다.
 - 기존 레거시 컬럼은 데이터 이전 검증 후 제거한다.

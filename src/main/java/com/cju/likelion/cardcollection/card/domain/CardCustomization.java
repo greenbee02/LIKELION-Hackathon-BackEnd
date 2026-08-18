@@ -82,6 +82,30 @@ public class CardCustomization {
         return customization;
     }
 
+    public static CardCustomization composed(
+            Card card,
+            CardTemplate template,
+            String inputText,
+            String generatedMessage,
+            String customizationData,
+            Instant now
+    ) {
+        CardCustomization customization = new CardCustomization();
+        customization.id = UUID.randomUUID();
+        customization.card = card;
+        customization.template = template;
+        customization.inputText = inputText;
+        customization.generatedFrontImageUrl = template.getFrontImageUrl();
+        customization.generatedBackImageUrl = template.getBackImageUrl();
+        customization.generatedMessage = generatedMessage;
+        customization.customizationData = customizationData;
+        customization.aiModel = "composition-v1";
+        customization.generationStatus = CustomizationStatus.COMPLETED;
+        customization.createdAt = now;
+        customization.updatedAt = now;
+        return customization;
+    }
+
     public boolean isCompleted() {
         return generationStatus == CustomizationStatus.COMPLETED;
     }

@@ -96,16 +96,17 @@ DECORATION | COLOR_PALETTE | TEXT_STYLE | COMPOSITION
 POST /api/v1/cards/{cardId}/ai-resources
 GET  /api/v1/cards/{cardId}/ai-resources
 GET  /api/v1/cards/{cardId}/ai-resources/{resourceId}
+POST /api/v1/cards/{cardId}/ai-resources/compose
 ```
 
-생성 요청은 비동기 처리를 위해 `202 Accepted`와 함께 `PENDING` 이력을 반환한다.
+생성 요청은 비동기 처리를 위해 `202 Accepted`와 함께 `PENDING` 이력을 반환한다. 백그라운드 worker가 PENDING 작업을 OpenAI Images API로 처리한 뒤 결과 이미지 URL과 상태를 갱신한다.
 
 ```json
 {
   "resourceType": "PRODUCT_ANGLE",
   "templateId": "template-id",
   "prompt": "상품을 오른쪽 45도에서 본 이미지",
-  "sourceImageUrl": "/images/products/product.png",
+  "sourceImageUrl": "https://cdn.example.com/products/product.png",
   "options": {
     "angle": 45,
     "background": "transparent"
@@ -113,9 +114,39 @@ GET  /api/v1/cards/{cardId}/ai-resources/{resourceId}
 }
 ```
 
-`PRODUCT_ANGLE` 요청에서 `sourceImageUrl`을 생략하면 카드 상품의 `products.image_url`을 원본으로 사용한다. 생성이 끝나면 결과 이미지 URL은 `generatedImageUrl`, 이미지 외 결과는 `generatedData`에 저장한다. `generatedData`는 색상·패턴·레이아웃 등 최종 조합에 사용할 JSON 문자열이다.
+`PRODUCT_ANGLE` 요청에서 `sourceImageUrl`을 생략하면 카드 상품의 `products.image_url`을 원본으로 사용한다. 상품 각도 이미지 생성에서는 원본 이미지가 외부에서 접근 가능한 HTTP(S) URL이어야 한다. 생성이 끝나면 결과 이미지 URL은 `generatedImageUrl`, 이미지 외 결과는 `generatedData`에 저장한다. `generatedData`는 색상·패턴·레이아웃 등 최종 조합에 사용할 JSON 문자열이다.
 
-생성 상태는 `PENDING → COMPLETED | FAILED | REJECTED`로 관리하며, 기존 결과를 더 이상 후보로 노출하지 않을 때 `ARCHIVED`로 변경한다. 실제 AI provider 연결 전까지는 작업 이력 저장과 조회 API를 먼저 제공한다.
+생성 상태는 `PENDING → COMPLETED | FAILED | REJECTED`로 관리하며, 기존 결과를 더 이상 후보로 노출하지 않을 때 `ARCHIVED`로 변경한다. 생성 요청은 worker가 실제 AI provider에 전달하고 결과를 갱신한다.
+
+### AI 리소스 조합 및 카드 적용
+
+완료된 AI 리소스 여러 개를 선택해 하나의 카드 커스터마이징 이력으로 저장하고, 해당 결과를 현재 카드에 적용한다.
+
+`POST /api/v1/cards/{cardId}/ai-resources/compose`
+
+요청:
+
+```json
+{
+  "resourceIds": ["resource-id-1", "resource-id-2"],
+  "message": "나만의 카드",
+  "layoutData": {
+    "productX": 0.5,
+    "productY": 0.55
+  }
+}
+```
+
+처리 규칙:
+
+- 카드 소유자만 조합할 수 있다.
+- `COMPLETED` 상태의 AI 리소스만 선택할 수 있다.
+- 다른 카드의 리소스는 선택할 수 없다.
+- 현재 카드가 `ACTIVE` 상태가 아니면 조합할 수 없다.
+- 조합 결과는 `card_customizations.customization_data`에 저장한다.
+- `cards.selected_customization_id`를 새 조합 결과로 변경한다.
+- 카드 타입은 원본 타입에서 `CUSTOMIZE`로 변경한다.
+- 조합과 카드 선택 상태 변경은 하나의 트랜잭션으로 처리한다.
 
 ## 인증 API 상세
 
@@ -211,5 +242,6 @@ Content-Type: application/json
 - `CUSTOMIZATION_NOT_FOUND`: 커스터마이징 이력 없음
 - `CUSTOMIZATION_NOT_COMPLETED`: 완료되지 않은 커스터마이징 선택 시도
 - `AI_RESOURCE_NOT_FOUND`: AI 리소스 생성 이력 없음
+- `AI_SOURCE_IMAGE_REQUIRED`: 상품 각도 이미지 생성에 원본 이미지가 없음
 - `TEMPLATE_INACTIVE`: 비활성 카드 템플릿 사용 시도
 - `TEMPLATE_CARD_TYPE_NOT_ALLOWED`: 카드 타입에 허용되지 않은 템플릿 사용 시도

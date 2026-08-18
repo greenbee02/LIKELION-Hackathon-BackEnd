@@ -111,6 +111,30 @@ public class AiResourceGeneration {
                 card, product, template, resourceType, prompt, sourceImageUrl, generatedData, now);
     }
 
+    public void complete(String generatedImageUrl, String aiModel) {
+        this.generatedImageUrl = generatedImageUrl;
+        this.aiModel = aiModel;
+        this.generationStatus = AiResourceStatus.COMPLETED;
+        this.failureReason = null;
+    }
+
+    public void fail(String failureReason, String aiModel) {
+        this.aiModel = aiModel;
+        this.failureReason = truncate(failureReason);
+        this.generationStatus = AiResourceStatus.FAILED;
+    }
+
+    public void reject(String failureReason, String aiModel) {
+        this.aiModel = aiModel;
+        this.failureReason = truncate(failureReason);
+        this.generationStatus = AiResourceStatus.REJECTED;
+    }
+
+    private String truncate(String value) {
+        if (value == null) return null;
+        return value.length() <= 2000 ? value : value.substring(0, 2000);
+    }
+
     @PrePersist
     void prePersist() {
         if (id == null) id = UUID.randomUUID();

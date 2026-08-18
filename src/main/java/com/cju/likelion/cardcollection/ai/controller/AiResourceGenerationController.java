@@ -2,6 +2,9 @@ package com.cju.likelion.cardcollection.ai.controller;
 
 import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationRequest;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationResponse;
+import com.cju.likelion.cardcollection.ai.dto.AiResourceCompositionRequest;
+import com.cju.likelion.cardcollection.ai.dto.AiResourceCompositionResponse;
+import com.cju.likelion.cardcollection.ai.service.AiResourceCompositionService;
 import com.cju.likelion.cardcollection.ai.service.AiResourceGenerationService;
 import com.cju.likelion.cardcollection.common.api.ApiResponse;
 import jakarta.validation.Valid;
@@ -23,9 +26,14 @@ import java.util.UUID;
 public class AiResourceGenerationController {
 
     private final AiResourceGenerationService service;
+    private final AiResourceCompositionService compositionService;
 
-    public AiResourceGenerationController(AiResourceGenerationService service) {
+    public AiResourceGenerationController(
+            AiResourceGenerationService service,
+            AiResourceCompositionService compositionService
+    ) {
         this.service = service;
+        this.compositionService = compositionService;
     }
 
     @PostMapping
@@ -55,6 +63,17 @@ public class AiResourceGenerationController {
     ) {
         return ResponseEntity.ok(new ApiResponse<>(
                 service.get(userId(authentication), cardId, resourceId)
+        ));
+    }
+
+    @PostMapping("/compose")
+    public ResponseEntity<ApiResponse<AiResourceCompositionResponse>> compose(
+            Authentication authentication,
+            @PathVariable UUID cardId,
+            @Valid @RequestBody AiResourceCompositionRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(
+                compositionService.compose(userId(authentication), cardId, request)
         ));
     }
 

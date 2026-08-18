@@ -51,6 +51,14 @@ public class AiResourceGenerationService {
                 ? request.sourceImageUrl()
                 : card.getProduct().getImageUrl();
 
+        if (request.resourceType().name().equals("PRODUCT_ANGLE") && sourceImageUrl == null) {
+            throw error(
+                    "AI_SOURCE_IMAGE_REQUIRED",
+                    "상품 각도 이미지 생성에는 원본 상품 이미지가 필요합니다.",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+
         AiResourceGeneration resource = AiResourceGeneration.pending(
                 card,
                 card.getProduct(),
