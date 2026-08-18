@@ -3,7 +3,9 @@ package com.cju.likelion.cardcollection.card;
 import com.cju.likelion.cardcollection.auth.domain.User;
 import com.cju.likelion.cardcollection.auth.domain.UserRole;
 import com.cju.likelion.cardcollection.auth.repository.UserRepository;
+import com.cju.likelion.cardcollection.card.domain.Card;
 import com.cju.likelion.cardcollection.card.domain.CardType;
+import com.cju.likelion.cardcollection.card.domain.CardStatus;
 import com.cju.likelion.cardcollection.card.domain.PurchaseQr;
 import com.cju.likelion.cardcollection.card.exception.CardDomainException;
 import com.cju.likelion.cardcollection.card.repository.CardRepository;
@@ -35,6 +37,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.awt.image.BufferedImage;
@@ -370,6 +373,123 @@ class CardControllerIntegrationTest {
     }
 
     @Test
+    void catalogSupportsCombinedFilters() throws Exception {
+        Fixture fixture = fixture(true);
+        ReflectionTestUtils.setField(fixture.product(), "category", "BACKPACK");
+        ReflectionTestUtils.setField(fixture.product(), "theme", "TRAVEL");
+        ReflectionTestUtils.setField(fixture.product(), "season", "SS");
+        ReflectionTestUtils.setField(fixture.product(), "region", "SEOUL");
+        productRepository.saveAndFlush(fixture.product());
+
+        mockMvc.perform(get("/api/v1/products")
+                        .param("offeringType", "PRODUCT")
+                        .param("category", "BACKPACK")
+                        .param("theme", "TRAVEL")
+                        .param("season", "SS")
+                        .param("region", "SEOUL")
+                        .param("limited", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(fixture.product().getId().toString()));
+    }
+
+    @Test
+    void inactiveProductCannotIssueCard() throws Exception {
+        Fixture fixture = fixture(false);
+        ReflectionTestUtils.setField(fixture.product(), "active", false);
+        productRepository.saveAndFlush(fixture.product());
+        String email = uniqueEmail();
+        signup(email);
+
+        mockMvc.perform(post("/api/v1/cards/registrations")
+                        .header("Authorization", "Bearer " + login(email))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"qrToken\":\"%s\"}".formatted(fixture.qrToken())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PRODUCT_INACTIVE"));
+    }
+
+    @Test
+    void inactiveTemplateCannotBeUsedForCustomization() throws Exception {
+        Fixture fixture = fixture(false);
+        String email = uniqueEmail();
+        signup(email);
+        String token = login(email);
+        String cardId = registerCard(token, fixture.qrToken());
+        CardTemplate template = templateRepository.findAllByActiveTrueOrderByCreatedAtAsc().stream()
+                .filter(item -> item.getBrand().getId().equals(fixture.product().getBrand().getId()))
+                .findFirst().orElseThrow();
+        ReflectionTestUtils.setField(template, "active", false);
+        templateRepository.saveAndFlush(template);
+
+        mockMvc.perform(post("/api/v1/cards/" + cardId + "/customizations")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"templateId\":\"%s\",\"inputText\":\"테스트\"}".formatted(template.getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TEMPLATE_INACTIVE"));
+    }
+
+    @Test
+    void templateFromAnotherBrandCannotBeUsedForCustomization() throws Exception {
+        Fixture fixture = fixture(false);
+        String email = uniqueEmail();
+        signup(email);
+        String token = login(email);
+        String cardId = registerCard(token, fixture.qrToken());
+        Brand anotherBrand = brandRepository.save(Brand.of("다른 브랜드 " + UUID.randomUUID()));
+        CardTemplate anotherBrandTemplate = templateRepository.save(CardTemplate.of(
+                anotherBrand, "다른 브랜드 템플릿", "/front.png", "/back.png", CardType.BASIC));
+
+        mockMvc.perform(post("/api/v1/cards/" + cardId + "/customizations")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"templateId\":\"%s\",\"inputText\":\"테스트\"}".formatted(anotherBrandTemplate.getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TEMPLATE_BRAND_MISMATCH"));
+    }
+
+    @Test
+    void anotherUserCannotReadOrModifyCard() throws Exception {
+        Fixture fixture = fixture(false);
+        String ownerEmail = uniqueEmail();
+        signup(ownerEmail);
+        String cardId = registerCard(login(ownerEmail), fixture.qrToken());
+        String otherEmail = uniqueEmail();
+        signup(otherEmail);
+        String otherToken = login(otherEmail);
+
+        mockMvc.perform(get("/api/v1/cards/" + cardId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CARD_NOT_FOUND"));
+        mockMvc.perform(post("/api/v1/cards/" + cardId + "/restore-original")
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CARD_NOT_FOUND"));
+    }
+
+    @Test
+    void blockedAndRevokedCardsCannotBeModified() throws Exception {
+        String email = uniqueEmail();
+        signup(email);
+        String token = login(email);
+
+        for (CardStatus cardStatus : List.of(CardStatus.BLOCKED, CardStatus.REVOKED)) {
+            Fixture fixture = fixture(false);
+            String cardId = registerCard(token, fixture.qrToken());
+            Card card = cardRepository.findById(UUID.fromString(cardId)).orElseThrow();
+            ReflectionTestUtils.setField(card, "status", cardStatus);
+            cardRepository.saveAndFlush(card);
+
+            mockMvc.perform(post("/api/v1/cards/" + cardId + "/restore-original")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("CARD_NOT_ACTIVE"));
+        }
+    }
+
+    @Test
     void concurrentRegistrationAllowsOnlyOneRequest() throws Exception {
         Fixture fixture = fixture(false);
         User user = userRepository.save(User.builder()
@@ -404,6 +524,16 @@ class CardControllerIntegrationTest {
         } catch (CardDomainException exception) {
             return exception.getCode();
         }
+    }
+
+    private String registerCard(String token, String qrToken) throws Exception {
+        String response = mockMvc.perform(post("/api/v1/cards/registrations")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"qrToken\":\"%s\"}".formatted(qrToken)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).path("data").path("id").asText();
     }
 
     private String getResult(Future<String> future) {
