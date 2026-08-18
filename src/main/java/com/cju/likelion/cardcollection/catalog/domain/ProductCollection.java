@@ -51,6 +51,16 @@ public class ProductCollection {
     @Column(nullable = false)
     private Instant updatedAt;
 
+    public static ProductCollection of(Brand brand, String name) {
+        ProductCollection collection = new ProductCollection();
+        collection.id = UUID.randomUUID();
+        collection.brand = brand;
+        collection.name = name;
+        collection.createdAt = Instant.now();
+        collection.updatedAt = collection.createdAt;
+        return collection;
+    }
+
     @PrePersist
     void prePersist() {
         if (id == null) id = UUID.randomUUID();

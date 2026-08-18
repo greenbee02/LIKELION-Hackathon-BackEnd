@@ -40,6 +40,17 @@ public class ProductCollectionItem {
     @Column(nullable = false)
     private Instant updatedAt;
 
+    public static ProductCollectionItem of(ProductCollection collection, Product product, boolean required) {
+        ProductCollectionItem item = new ProductCollectionItem();
+        item.id = UUID.randomUUID();
+        item.productCollection = collection;
+        item.product = product;
+        item.required = required;
+        item.createdAt = Instant.now();
+        item.updatedAt = item.createdAt;
+        return item;
+    }
+
     @PrePersist
     void prePersist() {
         if (id == null) id = UUID.randomUUID();

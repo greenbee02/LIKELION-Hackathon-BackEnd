@@ -17,10 +17,14 @@ import com.cju.likelion.cardcollection.ai.worker.AiResourceGenerationWorker;
 import com.cju.likelion.cardcollection.catalog.domain.Brand;
 import com.cju.likelion.cardcollection.catalog.domain.CardTemplate;
 import com.cju.likelion.cardcollection.catalog.domain.Product;
+import com.cju.likelion.cardcollection.catalog.domain.ProductCollection;
+import com.cju.likelion.cardcollection.catalog.domain.ProductCollectionItem;
 import com.cju.likelion.cardcollection.catalog.domain.Store;
 import com.cju.likelion.cardcollection.catalog.repository.BrandRepository;
 import com.cju.likelion.cardcollection.catalog.repository.CardTemplateRepository;
 import com.cju.likelion.cardcollection.catalog.repository.ProductRepository;
+import com.cju.likelion.cardcollection.catalog.repository.ProductCollectionRepository;
+import com.cju.likelion.cardcollection.catalog.repository.ProductCollectionItemRepository;
 import com.cju.likelion.cardcollection.catalog.repository.StoreRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -85,6 +89,9 @@ class CardControllerIntegrationTest {
 
     @Autowired
     private AiResourceGenerationRepository aiResourceRepository;
+
+    @Autowired private ProductCollectionRepository productCollectionRepository;
+    @Autowired private ProductCollectionItemRepository productCollectionItemRepository;
 
     @Test
     void registerListAndGetCard() throws Exception {
@@ -290,6 +297,26 @@ class CardControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.customization.aiModel").value("composition-v1"))
                 .andReturn().getResponse().getContentAsString();
         assertThat(compositionResponse).contains(resourceId.toString());
+    }
+
+    @Test
+    void catalogCanBeReadWithoutAuthentication() throws Exception {
+        Fixture fixture = fixture(false);
+        ProductCollection collection = productCollectionRepository.save(ProductCollection.of(fixture.product().getBrand(), "공개 컬렉션"));
+        productCollectionItemRepository.save(ProductCollectionItem.of(collection, fixture.product(), true));
+
+        mockMvc.perform(get("/api/v1/products").param("offeringType", "PRODUCT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(fixture.product().getId().toString()));
+        mockMvc.perform(get("/api/v1/products/" + fixture.product().getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value(fixture.product().getName()));
+        mockMvc.perform(get("/api/v1/product-collections/" + collection.getId() + "/products"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].required").value(true));
+        mockMvc.perform(get("/api/v1/card-templates"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").isNotEmpty());
     }
 
     @Test

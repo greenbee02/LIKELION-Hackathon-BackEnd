@@ -46,6 +46,7 @@ public class AiResourceGenerationService {
             AiResourceGenerationRequest request
     ) {
         Card card = findCard(userId, cardId);
+        requireActive(card);
         CardTemplate template = resolveTemplate(card, request.templateId());
         String sourceImageUrl = request.sourceImageUrl() != null
                 ? request.sourceImageUrl()
@@ -108,6 +109,9 @@ public class AiResourceGenerationService {
         if (!template.isActive()) {
             throw error("TEMPLATE_INACTIVE", "비활성화된 카드 템플릿입니다.", HttpStatus.CONFLICT);
         }
+        if (!template.getBrand().getId().equals(card.getProduct().getBrand().getId())) {
+            throw error("TEMPLATE_BRAND_MISMATCH", "카드 상품과 같은 브랜드의 템플릿만 사용할 수 있습니다.", HttpStatus.CONFLICT);
+        }
         if (template.getAllowedCardType() != null
                 && template.getAllowedCardType() != card.getOriginalCardType()) {
             throw error(
@@ -130,5 +134,11 @@ public class AiResourceGenerationService {
 
     private CardDomainException error(String code, String message, HttpStatus status) {
         return new CardDomainException(code, message, status);
+    }
+
+    private void requireActive(Card card) {
+        if (card.getStatus() != com.cju.likelion.cardcollection.card.domain.CardStatus.ACTIVE) {
+            throw error("CARD_NOT_ACTIVE", "활성 상태의 카드만 AI 리소스를 생성할 수 있습니다.", HttpStatus.CONFLICT);
+        }
     }
 }

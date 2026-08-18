@@ -63,7 +63,10 @@ public class CardService {
         }
 
         CardType originalType = qr.getProduct().isLimited() ? CardType.COLLECTOR : CardType.BASIC;
-        CardTemplate template = findTemplate(originalType);
+        if (!qr.getProduct().isActive()) {
+            throw error("PRODUCT_INACTIVE", "비활성화된 상품 또는 경험은 카드를 발급할 수 없습니다.", HttpStatus.CONFLICT);
+        }
+        CardTemplate template = findTemplate(originalType, qr.getProduct().getBrand().getId());
         Card card = cardRepository.save(Card.issue(user, qr, template, now));
         qr.markUsed(user, now);
         return CardResponse.from(card);
@@ -89,6 +92,7 @@ public class CardService {
             CustomizationCreateRequest request
     ) {
         Card card = findCard(userId, cardId);
+        requireActive(card);
         CardTemplate template = request.templateId() == null
                 ? card.getTemplate()
                 : templateRepository.findById(request.templateId())
@@ -97,6 +101,7 @@ public class CardService {
         if (!template.isActive()) {
             throw error("TEMPLATE_INACTIVE", "비활성화된 카드 템플릿입니다.", HttpStatus.CONFLICT);
         }
+        requireSameBrand(card, template);
         if (template.getAllowedCardType() != null
                 && template.getAllowedCardType() != card.getOriginalCardType()) {
             throw error("TEMPLATE_CARD_TYPE_NOT_ALLOWED", "현재 카드 타입에 사용할 수 없는 템플릿입니다.", HttpStatus.CONFLICT);
@@ -124,6 +129,7 @@ public class CardService {
     @Transactional
     public CardResponse selectCustomization(UUID userId, UUID cardId, UUID customizationId) {
         Card card = findCard(userId, cardId);
+        requireActive(card);
         CardCustomization customization = customizationRepository.findByIdAndCardId(customizationId, cardId)
                 .orElseThrow(() -> error("CUSTOMIZATION_NOT_FOUND", "커스터마이징 이력을 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
         if (!customization.isCompleted()) {
@@ -136,6 +142,7 @@ public class CardService {
     @Transactional
     public CardResponse restoreOriginal(UUID userId, UUID cardId) {
         Card card = findCard(userId, cardId);
+        requireActive(card);
         card.restoreOriginal();
         return CardResponse.from(card);
     }
@@ -151,8 +158,9 @@ public class CardService {
                 .orElseThrow(() -> error("CARD_NOT_FOUND", "카드를 찾을 수 없습니다.", HttpStatus.NOT_FOUND));
     }
 
-    private CardTemplate findTemplate(CardType type) {
+    private CardTemplate findTemplate(CardType type, UUID brandId) {
         return templateRepository.findAllByActiveTrueOrderByCreatedAtAsc().stream()
+                .filter(template -> template.getBrand().getId().equals(brandId))
                 .filter(template -> template.getAllowedCardType() == null || template.getAllowedCardType() == type)
                 .findFirst()
                 .orElseThrow(() -> error("CARD_TEMPLATE_NOT_FOUND", "발급 가능한 카드 템플릿이 없습니다.", HttpStatus.CONFLICT));
@@ -160,5 +168,17 @@ public class CardService {
 
     private CardDomainException error(String code, String message, HttpStatus status) {
         return new CardDomainException(code, message, status);
+    }
+
+    private void requireActive(Card card) {
+        if (card.getStatus() != com.cju.likelion.cardcollection.card.domain.CardStatus.ACTIVE) {
+            throw error("CARD_NOT_ACTIVE", "활성 상태의 카드만 변경할 수 있습니다.", HttpStatus.CONFLICT);
+        }
+    }
+
+    private void requireSameBrand(Card card, CardTemplate template) {
+        if (!card.getProduct().getBrand().getId().equals(template.getBrand().getId())) {
+            throw error("TEMPLATE_BRAND_MISMATCH", "카드 상품과 같은 브랜드의 템플릿만 사용할 수 있습니다.", HttpStatus.CONFLICT);
+        }
     }
 }

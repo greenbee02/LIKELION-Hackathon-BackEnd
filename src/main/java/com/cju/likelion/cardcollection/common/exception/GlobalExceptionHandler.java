@@ -5,11 +5,13 @@ import com.cju.likelion.cardcollection.auth.exception.DuplicateEmailException;
 import com.cju.likelion.cardcollection.auth.exception.InvalidCredentialsException;
 import com.cju.likelion.cardcollection.auth.exception.OAuthLoginException;
 import com.cju.likelion.cardcollection.card.exception.CardDomainException;
+import com.cju.likelion.cardcollection.catalog.service.CatalogDomainException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -36,6 +38,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleCardDomain(CardDomainException exception) {
         return ResponseEntity.status(exception.getStatus())
                 .body(new ApiErrorResponse(exception.getCode(), exception.getMessage()));
+    }
+
+    @ExceptionHandler(CatalogDomainException.class)
+    public ResponseEntity<ApiErrorResponse> handleCatalogDomain(CatalogDomainException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(new ApiErrorResponse(exception.getCode(), exception.getMessage()));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest().body(new ApiErrorResponse("INVALID_REQUEST", exception.getMessage()));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataIntegrity(DataIntegrityViolationException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorResponse("DB_CONSTRAINT_VIOLATION", "중복되었거나 참조할 수 없는 데이터입니다."));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

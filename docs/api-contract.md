@@ -21,6 +21,29 @@
 
 카드 API는 JWT 인증이 필요하다.
 
+## 상품·공식 컬렉션 조회 API
+
+다음 조회 API는 로그인 없이 사용할 수 있다.
+
+```text
+GET /api/v1/products
+GET /api/v1/products/{productId}
+GET /api/v1/product-collections
+GET /api/v1/product-collections/{collectionId}
+GET /api/v1/product-collections/{collectionId}/products
+GET /api/v1/card-templates
+```
+
+상품 목록은 다음 선택 필터와 페이지네이션을 지원한다.
+
+```text
+offeringType | category | theme | season | region | limited
+page (기본 0) | size (기본 20, 최대 100)
+```
+
+응답은 `{ items, page, size, totalElements, totalPages }` 형태다. 공식 컬렉션 소속 상품 조회는 각 항목의 `required`, `displayOrder`도 반환한다.
+
+
 ### 카드 등록
 
 `POST /api/v1/cards/registrations`
@@ -245,3 +268,7 @@ Content-Type: application/json
 - `AI_SOURCE_IMAGE_REQUIRED`: 상품 각도 이미지 생성에 원본 이미지가 없음
 - `TEMPLATE_INACTIVE`: 비활성 카드 템플릿 사용 시도
 - `TEMPLATE_CARD_TYPE_NOT_ALLOWED`: 카드 타입에 허용되지 않은 템플릿 사용 시도
+- `PRODUCT_INACTIVE`: 비활성 상품 또는 경험의 카드 발급 시도
+- `CARD_NOT_ACTIVE`: 차단 또는 폐기 상태 카드의 변경 시도
+- `TEMPLATE_BRAND_MISMATCH`: 카드 상품과 다른 브랜드 템플릿 사용 시도
+- `DB_CONSTRAINT_VIOLATION`: 유니크 또는 외래키 제약 위반
