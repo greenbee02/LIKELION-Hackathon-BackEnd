@@ -7,6 +7,7 @@ import com.cju.likelion.cardcollection.ai.provider.AiImageResult;
 import com.cju.likelion.cardcollection.ai.provider.AiProviderException;
 import com.cju.likelion.cardcollection.ai.repository.AiResourceGenerationRepository;
 import com.cju.likelion.cardcollection.ai.storage.GeneratedImageStorage;
+import com.cju.likelion.cardcollection.ai.storage.CardAspectRatioImageNormalizer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -22,6 +23,7 @@ public class AiResourceGenerationWorker {
     private final AiResourceGenerationRepository resourceRepository;
     private final AiImageProvider imageProvider;
     private final GeneratedImageStorage imageStorage;
+    private final CardAspectRatioImageNormalizer imageNormalizer;
     private final boolean enabled;
     private final String apiKey;
 
@@ -29,12 +31,14 @@ public class AiResourceGenerationWorker {
             AiResourceGenerationRepository resourceRepository,
             AiImageProvider imageProvider,
             GeneratedImageStorage imageStorage,
+            CardAspectRatioImageNormalizer imageNormalizer,
             @Value("${app.ai.openai.enabled:false}") boolean enabled,
             @Value("${app.ai.openai.api-key:}") String apiKey
     ) {
         this.resourceRepository = resourceRepository;
         this.imageProvider = imageProvider;
         this.imageStorage = imageStorage;
+        this.imageNormalizer = imageNormalizer;
         this.enabled = enabled;
         this.apiKey = apiKey;
     }
@@ -65,7 +69,7 @@ public class AiResourceGenerationWorker {
     private void process(AiResourceGeneration resource) {
         long startedAt = System.nanoTime();
         try {
-            AiImageResult result = imageProvider.generate(resource);
+            AiImageResult result = imageNormalizer.normalize(imageProvider.generate(resource));
             String generatedImageUrl = imageStorage.store(
                     resource.getId(), result.imageBytes(), result.contentType());
             resource.complete(generatedImageUrl, result.model());

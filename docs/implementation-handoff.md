@@ -154,7 +154,7 @@ POST /cards/{cardId}/ai-resources/compose
 
 ## 6. 실제 AI 연동 상태
 
-코드와 Worker 연동은 완료됐지만, 실제 OpenAI 이미지 생성은 계정의 이미지 API 한도에 막혀 있다.
+코드와 Worker 연동이 완료됐고, 실제 OpenAI `BACKGROUND`·`BORDER` 이미지 생성 및 결과 저장까지 검증했다. 이후 다른 리소스 타입과 운영용 이미지 저장소를 추가 검증한다.
 
 최근 검증 결과:
 

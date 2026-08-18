@@ -12,6 +12,7 @@ import com.cju.likelion.cardcollection.card.service.CardService;
 import com.cju.likelion.cardcollection.ai.provider.AiImageProvider;
 import com.cju.likelion.cardcollection.ai.provider.AiImageResult;
 import com.cju.likelion.cardcollection.ai.repository.AiResourceGenerationRepository;
+import com.cju.likelion.cardcollection.ai.storage.CardAspectRatioImageNormalizer;
 import com.cju.likelion.cardcollection.ai.storage.GeneratedImageStorage;
 import com.cju.likelion.cardcollection.ai.worker.AiResourceGenerationWorker;
 import com.cju.likelion.cardcollection.catalog.domain.Brand;
@@ -36,6 +37,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+
+import javax.imageio.ImageIO;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -260,14 +265,18 @@ class CardControllerIntegrationTest {
 
         AiImageProvider provider = mock(AiImageProvider.class);
         GeneratedImageStorage storage = mock(GeneratedImageStorage.class);
+        BufferedImage testImage = new BufferedImage(1024, 1024, BufferedImage.TYPE_INT_ARGB);
+        ByteArrayOutputStream testImageBytes = new ByteArrayOutputStream();
+        ImageIO.write(testImage, "png", testImageBytes);
         when(provider.generate(any())).thenReturn(new AiImageResult(
-                new byte[]{1, 2, 3}, "image/png", "test-image-model"));
+                testImageBytes.toByteArray(), "image/png", "test-image-model"));
         when(storage.store(any(), any(), any())).thenReturn("/generated/ai-resources/" + resourceId + ".png");
 
         new AiResourceGenerationWorker(
                 aiResourceRepository,
                 provider,
                 storage,
+                new CardAspectRatioImageNormalizer(),
                 true,
                 "test-api-key"
         ).process(resourceId);

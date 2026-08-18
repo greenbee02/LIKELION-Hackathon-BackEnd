@@ -45,6 +45,7 @@ public class SecurityConfig {
                                 "/api/v1/products/**",
                                 "/api/v1/product-collections/**",
                                 "/api/v1/card-templates",
+                                "/generated/ai-resources/**",
                                 "/oauth2/**",
                                 "/login/**",
                                 "/swagger-ui/**",

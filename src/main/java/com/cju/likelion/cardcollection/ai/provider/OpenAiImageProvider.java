@@ -23,6 +23,10 @@ import java.util.UUID;
 @Component
 public class OpenAiImageProvider implements AiImageProvider {
 
+    private static final String CARD_CANVAS_INSTRUCTION =
+            "Use a landscape ISO/IEC 7810 ID-1 card canvas with an 85.60:53.98 aspect ratio "
+                    + "(approximately 1.586:1). Keep all important visual elements inside the card-safe area. ";
+
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final String apiKey;
@@ -205,7 +209,8 @@ public class OpenAiImageProvider implements AiImageProvider {
         String prompt = resource.getPrompt() == null ? "" : resource.getPrompt();
         String options = resource.getGeneratedData() == null ? "" :
                 " Design options JSON: " + resource.getGeneratedData();
-        return typeInstruction + ". Do not create a complete branded card, logo, or unrelated text. "
+        return CARD_CANVAS_INSTRUCTION + typeInstruction
+                + ". Do not create a complete branded card, logo, or unrelated text. "
                 + prompt + options;
     }
 
