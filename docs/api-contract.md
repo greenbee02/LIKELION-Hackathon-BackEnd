@@ -102,7 +102,7 @@ POST /api/v1/cards/{cardId}/restore-original
 }
 ```
 
-현재 MVP 생성기는 템플릿 앞·뒷면 이미지를 사용한 Mock 결과를 `COMPLETED` 상태로 저장한다. 실제 AI 생성 연동 시 `PENDING` 상태와 비동기 처리로 확장할 수 있다.
+현재 일반 커스터마이징 API는 템플릿 앞·뒷면 이미지를 사용하는 Mock 방식으로 즉시 `COMPLETED` 결과를 저장한다. 실제 AI 리소스 생성은 아래 AI 리소스 API와 비동기 Worker를 사용한다.
 
 현재 선택 결과는 `cards.selected_customization_id`로 관리한다. 원본 복원 시 선택 ID를 NULL로 초기화하고 AI 생성 이력은 보존한다.
 
@@ -138,6 +138,8 @@ POST /api/v1/cards/{cardId}/ai-resources/compose
 ```
 
 `PRODUCT_ANGLE` 요청에서 `sourceImageUrl`을 생략하면 카드 상품의 `products.image_url`을 원본으로 사용한다. 상품 각도 이미지 생성에서는 원본 이미지가 외부에서 접근 가능한 HTTP(S) URL이어야 한다. 생성이 끝나면 결과 이미지 URL은 `generatedImageUrl`, 이미지 외 결과는 `generatedData`에 저장한다. `generatedData`는 색상·패턴·레이아웃 등 최종 조합에 사용할 JSON 문자열이다.
+
+`BACKGROUND`, `BORDER`, `PATTERN`, `DECORATION`, `COLOR_PALETTE`, `TEXT_STYLE`, `COMPOSITION`은 원본 상품 이미지를 사용하지 않는 독립 리소스 생성이다. `sourceImageUrl`은 `PRODUCT_ANGLE`에서만 사용한다.
 
 생성 상태는 `PENDING → COMPLETED | FAILED | REJECTED`로 관리하며, 기존 결과를 더 이상 후보로 노출하지 않을 때 `ARCHIVED`로 변경한다. 생성 요청은 worker가 실제 AI provider에 전달하고 결과를 갱신한다.
 
@@ -272,3 +274,10 @@ Content-Type: application/json
 - `CARD_NOT_ACTIVE`: 차단 또는 폐기 상태 카드의 변경 시도
 - `TEMPLATE_BRAND_MISMATCH`: 카드 상품과 다른 브랜드 템플릿 사용 시도
 - `DB_CONSTRAINT_VIOLATION`: 유니크 또는 외래키 제약 위반
+
+## 구현·운영 참고
+
+- 상품·공식 컬렉션·템플릿 조회 API는 로그인 없이 사용할 수 있다.
+- 카드·커스터마이징·AI 리소스 API는 JWT 인증이 필요하다.
+- 실제 DB는 Flyway V1~V5 마이그레이션을 기준으로 한다.
+- AI 생성 결과는 현재 로컬 저장소에 저장되며 운영에서는 영구 저장소로 교체해야 한다.

@@ -1,107 +1,138 @@
 # Luxury Digital Card Collection
 
-럭셔리 제품 구매 경험을 디지털 카드로 기록·수집하고 리워드와 케어 서비스로 연결하는 Spring Boot 백엔드 프로젝트다.
+럭셔리 상품·경험 구매를 디지털 카드로 기록하고, 카드 커스터마이징과 컬렉션으로 확장하는 Spring Boot 백엔드다.
 
-## 현재 MVP
+## 현재 구현 상태
 
-- 회원가입 및 로그인 기반
-- QR/NFC 카드 식별자를 통한 카드 등록
-- 카드 최초 등록 계정 귀속 및 중복 등록 차단
-- 카드 목록 및 상세 조회
+- 회원가입·로그인·JWT·OAuth2 인증
+- 상품·경험 목록·상세·필터 조회
+- 공식 컬렉션 및 카드 템플릿 조회
+- 구매 QR 기반 디지털 카드 발급
+- 카드 목록·상세 조회
+- 카드 커스터마이징 Mock 생성·선택·원본 복원
+- AI 리소스 생성 요청·비동기 Worker·OpenAI Provider
+- AI 리소스 조합 및 카드 적용
 
-## 실행 환경
+실제 OpenAI 이미지 생성은 코드 연동까지 완료됐지만, 현재 API 프로젝트의 이미지 생성 한도 설정에 따라 별도 검증이 필요하다.
 
-- Java 17 이상
-- Spring Boot 3.4.x
-- Gradle
-- 로컬: H2 인메모리 데이터베이스
-- 운영: PostgreSQL
+## 기술 스택
 
-프로젝트를 IntelliJ IDEA에서 Gradle 프로젝트로 불러온 뒤 `CardCollectionApplication`을 실행하면 기본적으로 `local` 프로필이 사용된다.
+- Java 17+
+- Spring Boot 3.4.5
+- Spring Data JPA
+- Spring Security, JWT, OAuth2 Client
+- Flyway
+- H2 / PostgreSQL
+- Gradle Wrapper
 
-테스트 실행:
+## 실행
+
+### H2 로컬 실행
+
+```powershell
+cd D:\cupToLion\LIKELION-Hackathon-BackEnd
+.\gradlew.bat bootRun --no-daemon
+```
+
+### 테스트
 
 ```powershell
 .\gradlew.bat test --no-daemon
 ```
 
-실행 후 확인할 주소:
-
-- Swagger UI: http://localhost:8080/swagger-ui.html
-- H2 Console: http://localhost:8080/h2-console
-
-## 인증 API 예시
-
-회원가입:
-
-```http
-POST /api/v1/auth/signup
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "password123",
-  "name": "홍길동"
-}
-```
-
-로그인:
-
-```http
-POST /api/v1/auth/login
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "password123"
-}
-```
-
-로그인 응답의 `accessToken`을 다음 요청에 사용한다.
-
-```http
-Authorization: Bearer {accessToken}
-```
-
-## Google·Kakao 로그인
-
-소셜 로그인은 `oauth` 프로필을 활성화했을 때 사용할 수 있다.
-
-필요한 환경 변수:
-
-```text
-GOOGLE_CLIENT_ID
-GOOGLE_CLIENT_SECRET
-KAKAO_CLIENT_ID
-KAKAO_CLIENT_SECRET
-FRONTEND_URL
-```
-
-프론트엔드는 다음 주소로 로그인 플로우를 시작한다.
-
-```text
-http://localhost:8080/oauth2/authorization/google
-http://localhost:8080/oauth2/authorization/kakao
-```
-
-OAuth 인증이 끝나면 백엔드는 프론트엔드의 `/oauth/callback?code=...`로 이동시킨다. 프론트엔드는 해당 코드를 `POST /api/v1/auth/oauth/exchange`로 교환해 자체 JWT를 받는다. 교환 코드는 2분 동안 한 번만 유효하다.
-
-동일한 이메일의 기존 계정이 있으면 이메일 인증이 확인된 소셜 계정을 기존 사용자에 연결한다. 회원 탈퇴는 `DELETE /api/v1/auth/me`로 처리하며 카드 이력을 보존하기 위해 소프트 삭제한다.
-
-로컬에서 OAuth 프로필을 함께 실행할 때는 다음처럼 `local,oauth` 프로필을 사용한다.
+### PostgreSQL 실행
 
 ```powershell
-.\gradlew.bat bootRun --args="--spring.profiles.active=local,oauth" --no-daemon
+$env:DB_URL = "jdbc:postgresql://localhost:54329/cardcollection"
+$env:DB_USERNAME = "cardcollection"
+$env:DB_PASSWORD = "cardcollection"
+
+.\gradlew.bat bootRun --args="--spring.profiles.active=prod" --no-daemon
+```
+
+PostgreSQL 테스트 시드는 [DataBase/test_seed_postgresql.sql](./DataBase/test_seed_postgresql.sql)이다.
+
+## AI 설정
+
+```powershell
+$env:AI_ENABLED = "true"
+$env:OPENAI_API_KEY = "발급받은_API_KEY"
+$env:OPENAI_IMAGE_MODEL = "gpt-image-2"
+```
+
+API Key는 Git, 문서, 채팅에 저장하지 않는다.
+
+생성 결과는 기본적으로 `build/generated-ai-resources`에 저장된다. 운영 환경에서는 S3 등 영구 저장소로 교체해야 한다.
+
+## 주요 API
+
+기본 경로는 `/api/v1`이다.
+
+```text
+POST /auth/signup
+POST /auth/login
+GET  /products
+GET  /products/{productId}
+GET  /product-collections
+GET  /product-collections/{collectionId}
+GET  /product-collections/{collectionId}/products
+GET  /card-templates
+POST /cards/registrations
+GET  /cards
+GET  /cards/{cardId}
+POST /cards/{cardId}/customizations
+GET  /cards/{cardId}/customizations
+POST /cards/{cardId}/customizations/{customizationId}/select
+POST /cards/{cardId}/restore-original
+POST /cards/{cardId}/ai-resources
+GET  /cards/{cardId}/ai-resources
+GET  /cards/{cardId}/ai-resources/{resourceId}
+POST /cards/{cardId}/ai-resources/compose
+```
+
+상품·공식 컬렉션·템플릿 조회는 로그인 없이 사용할 수 있다. 카드·AI API는 JWT 인증이 필요하다.
+
+## 데이터베이스
+
+실제 애플리케이션 DB의 기준은 Flyway 마이그레이션이다.
+
+```text
+V1__init.sql
+V2__add_social_accounts.sql
+V3__add_user_withdrawal.sql
+V4__expand_product_and_card_domain.sql
+V5__add_ai_resource_generations.sql
+```
+
+새로운 DB 변경은 V6 이후 마이그레이션으로 추가한다. `DataBase/Schema.sql`과 `seed_data.sql`은 참고용이다.
+
+## 다음 작업 순서
+
+1. API 계약·문서와 실제 코드 동기화
+2. 상품·카드 API 통합 테스트 강화
+3. OpenAI 이미지 한도 해결 후 실제 AI 생성 검증
+4. 사용자 컬렉션 구현
+5. 리워드·이벤트 구현
+6. 실물 카드 구현
+
+새로운 기능은 다음 순서를 따른다.
+
+```text
+ERD·상태 전이
+→ Flyway
+→ Entity
+→ Repository
+→ Service
+→ Controller/API
+→ 통합 테스트
+→ 문서 갱신
 ```
 
 ## 문서
 
-- `docs/mvp-scope.md`: MVP 범위
-- `docs/api-contract.md`: API 계약
-- `docs/erd.md`: ERD 초안
-
-## 다음 개발 순서
-
-1. 사용자·상품·카드 Entity 및 Repository 구현
-2. 카드 등록·목록·상세 API 구현
-3. 중복 카드 등록 예외 테스트
+- [구현 현황 및 인수인계](./docs/implementation-handoff.md)
+- [2026-08-19 구현 진행 기록 및 다음 작업 순서](./docs/implementation-progress-2026-08-19.md)
+- [API 계약](./docs/api-contract.md)
+- [ERD](./docs/erd.md)
+- [MVP 범위](./docs/mvp-scope.md)
+- [초기 데이터 작업 로그](./DataBase/SY_WORK_LOG_2026-08-17.md)

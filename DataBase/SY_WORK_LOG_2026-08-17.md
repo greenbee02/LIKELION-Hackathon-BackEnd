@@ -1,5 +1,7 @@
 # 2026-08-17 작업 내역
 
+> 이 문서는 2026-08-17 초기 상품·이미지·MySQL seed 작업의 역사 기록이다. 현재 애플리케이션 구현 상태와 다음 작업은 [docs/implementation-handoff.md](../docs/implementation-handoff.md)를 기준으로 한다. 실제 애플리케이션 DB 마이그레이션 기준은 `src/main/resources/db/migration/V1~V5`다.
+
 ## 이미지 리소스 추가
 
 - 상품, 브랜드 및 카드 템플릿용 이미지 경로 구성
