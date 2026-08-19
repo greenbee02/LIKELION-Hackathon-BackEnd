@@ -85,9 +85,10 @@ public class AiResourceGenerationService {
             int regionalVariant
     ) {
         CardTemplate template = resolveTemplate(card, request.templateId());
-        String sourceImageUrl = request.sourceImageUrl() != null
-                ? request.sourceImageUrl()
-                : card.getProduct().getImageUrl();
+        String sourceImageUrl = request.sourceImageUrl();
+        if (request.resourceType() == AiResourceType.PRODUCT_ANGLE && sourceImageUrl == null) {
+            sourceImageUrl = card.getProduct().getImageUrl();
+        }
 
         if (request.resourceType() == AiResourceType.PRODUCT_ANGLE && sourceImageUrl == null) {
             throw error(
