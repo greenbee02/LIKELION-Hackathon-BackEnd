@@ -1,0 +1,3 @@
+package com.cju.likelion.cardcollection.reward.dto;
+import com.cju.likelion.cardcollection.reward.domain.UserReward; import java.time.Instant; import java.util.UUID;
+public record UserRewardResponse(UUID id,String targetType,UUID targetId,String name,String status,String claimCode,Instant unlockedAt,Instant expiresAt){public static UserRewardResponse from(UserReward x){boolean reward=x.getReward()!=null; return new UserRewardResponse(x.getId(),reward?"REWARD":"EVENT",reward?x.getReward().getId():x.getEvent().getId(),reward?x.getReward().getName():x.getEvent().getName(),x.getStatus().name(),x.getClaimCode(),x.getUnlockedAt(),x.getExpiresAt());}}

@@ -17,6 +17,7 @@ import com.cju.likelion.cardcollection.card.repository.CardRepository;
 import com.cju.likelion.cardcollection.card.repository.PurchaseQrRepository;
 import com.cju.likelion.cardcollection.catalog.domain.CardTemplate;
 import com.cju.likelion.cardcollection.catalog.repository.CardTemplateRepository;
+import com.cju.likelion.cardcollection.reward.service.RewardUnlockService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,19 +34,22 @@ public class CardService {
     private final CardRepository cardRepository;
     private final CardCustomizationRepository customizationRepository;
     private final CardTemplateRepository templateRepository;
+    private final RewardUnlockService rewardUnlockService;
 
     public CardService(
             UserRepository userRepository,
             PurchaseQrRepository purchaseQrRepository,
             CardRepository cardRepository,
             CardCustomizationRepository customizationRepository,
-            CardTemplateRepository templateRepository
+            CardTemplateRepository templateRepository,
+            RewardUnlockService rewardUnlockService
     ) {
         this.userRepository = userRepository;
         this.purchaseQrRepository = purchaseQrRepository;
         this.cardRepository = cardRepository;
         this.customizationRepository = customizationRepository;
         this.templateRepository = templateRepository;
+        this.rewardUnlockService = rewardUnlockService;
     }
 
     @Transactional
@@ -69,6 +73,7 @@ public class CardService {
         CardTemplate template = findTemplate(originalType, qr.getProduct().getBrand().getId());
         Card card = cardRepository.save(Card.issue(user, qr, template, now));
         qr.markUsed(user, now);
+        rewardUnlockService.evaluate(user);
         return CardResponse.from(card);
     }
 
