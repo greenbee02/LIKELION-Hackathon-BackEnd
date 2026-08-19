@@ -37,6 +37,7 @@ app:
       api-key: ${OPENAI_API_KEY:}
       base-url: ${OPENAI_BASE_URL:https://api.openai.com}
       model: ${OPENAI_IMAGE_MODEL:gpt-image-2}
+      text-model: ${OPENAI_TEXT_MODEL:gpt-5-mini}
       size: ${OPENAI_IMAGE_SIZE:1024x1536}
       quality: ${OPENAI_IMAGE_QUALITY:low}
       background: ${OPENAI_IMAGE_BACKGROUND:auto}

@@ -228,6 +228,10 @@ POST /api/v1/cards/{cardId}/ai-resources/compose
 
 `BACKGROUND`, `BORDER`, `PATTERN`, `DECORATION`, `COLOR_PALETTE`, `TEXT_STYLE`, `COMPOSITION`은 원본 상품 이미지를 사용하지 않는 독립 리소스 생성이다. `sourceImageUrl`은 `PRODUCT_ANGLE`에서만 사용한다.
 
+`COLOR_PALETTE`는 이미지 생성이 아니라 OpenAI Structured Outputs를 이용한 색상 추천 JSON으로 생성된다. 완료 시 `generatedImageUrl`은 `null`이고 `generatedData`에는 다음 필드가 저장된다: `paletteName`, `primary`, `secondary`, `accent`, `background`, `text`, `rationale`. 색상 값은 `#RRGGBB` 형식이다.
+
+`TEXT_STYLE`도 이미지 생성 없이 폰트·크기·굵기·자간·줄 간격·색상·정렬·최대 줄 수·정규화 좌표를 담은 JSON으로 생성된다. `COMPOSITION`은 이미지 대신 `1000x1586` 카드 캔버스, 배경색, 레이어별 유형·좌표·크기·회전·투명도·순서를 담은 JSON으로 생성된다. 두 유형 모두 완료 시 `generatedImageUrl`은 `null`이고 결과는 `generatedData`에 저장된다.
+
 생성 상태는 `PENDING → COMPLETED | FAILED | REJECTED`로 관리하며, 기존 결과를 더 이상 후보로 노출하지 않을 때 `ARCHIVED`로 변경한다. 생성 요청은 worker가 실제 AI provider에 전달하고 결과를 갱신한다.
 
 모든 AI 이미지 리소스는 ISO/IEC 7810 ID-1 비율을 세로 방향으로 적용한다. API 요청은 세로형 `1024x1536`을 기본으로 사용하고, 저장 직전에 중앙 크롭·리사이즈하여 최종 결과를 `1000x1586`으로 맞춘다. 비율은 가로:세로 약 `1:1.586`이며, 중요한 요소는 카드 안전 영역 안에 배치하도록 프롬프트에 포함한다.

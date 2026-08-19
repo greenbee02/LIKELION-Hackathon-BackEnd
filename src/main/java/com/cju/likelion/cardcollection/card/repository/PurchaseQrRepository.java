@@ -20,4 +20,12 @@ public interface PurchaseQrRepository extends JpaRepository<PurchaseQr, UUID> {
             where q.qrToken = :qrToken
             """)
     Optional<PurchaseQr> findByQrTokenForUpdate(@Param("qrToken") String qrToken);
+
+    @Query("""
+            select q from PurchaseQr q
+            join fetch q.product
+            join fetch q.store
+            where q.qrToken = :qrToken
+            """)
+    Optional<PurchaseQr> findByQrToken(@Param("qrToken") String qrToken);
 }

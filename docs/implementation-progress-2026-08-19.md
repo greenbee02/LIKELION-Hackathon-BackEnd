@@ -307,16 +307,13 @@ OpenAI 계정 한도 문제가 해결된 후 진행한다.
 5. 완료된 배경·테두리·패턴 중 원하는 리소스만 `compose`에 전달
 6. 카드가 `CUSTOMIZE`로 변경되고 `card_customizations.customization_data`에 조합 정보가 저장되는지 확인
 
-### 2.6순위: TEXT_STYLE·COLOR_PALETTE 구조화 추천
+### 2.6순위: 구조화 추천 전환
 
-현재 `TEXT_STYLE`과 `COLOR_PALETTE`도 이미지 리소스 생성 경로를 사용한다. 사용자가 직접 배치하려면 이미지보다 구조화된 추천 데이터가 필요하다.
+`COLOR_PALETTE`, `TEXT_STYLE`, `COMPOSITION`은 이미지 생성 없이 OpenAI Structured Outputs를 이용한 JSON 추천으로 처리한다. 완료 결과는 이미지 URL 없이 `generatedData`에 저장한다.
 
-- `TEXT_STYLE` 추천 JSON 정의
-  - 폰트 계열, 굵기, 크기, 자간, 줄 간격
-  - 글자 색상, 정렬, 최대 줄 수
-  - 카드 안전 영역과 위치 힌트
-- `COLOR_PALETTE` 추천 JSON 정의
-  - 주 색상, 보조 색상, 포인트 색상, 대비 색상
+- `COLOR_PALETTE`: 팔레트명, 주요·보조·강조·배경·텍스트 색상, rationale
+- `TEXT_STYLE`: 폰트 계열, 굵기, 크기, 자간, 줄 간격, 글자 색상, 정렬, 최대 줄 수, 정규화 좌표
+- `COMPOSITION`: `1000x1586` 캔버스, 배경색, 레이어별 유형·정규화 좌표·크기·회전·투명도·순서
 - AI 결과를 프론트엔드 미리보기 카드로 표시
 - 선택된 추천값을 `layoutData`와 `customization_data`에 저장
 

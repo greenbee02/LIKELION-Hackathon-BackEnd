@@ -118,6 +118,14 @@ public class AiResourceGeneration {
         this.failureReason = null;
     }
 
+    public void completeData(String generatedData, String aiModel) {
+        this.generatedImageUrl = null;
+        this.generatedData = generatedData;
+        this.aiModel = aiModel;
+        this.generationStatus = AiResourceStatus.COMPLETED;
+        this.failureReason = null;
+    }
+
     public void fail(String failureReason, String aiModel) {
         this.aiModel = aiModel;
         this.failureReason = truncate(failureReason);

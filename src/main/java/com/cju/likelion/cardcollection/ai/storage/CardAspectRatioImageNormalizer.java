@@ -43,7 +43,7 @@ public class CardAspectRatioImageNormalizer {
                 throw new IOException("이미지 형식으로 변환할 수 없습니다: " + format);
             }
 
-            return new AiImageResult(output.toByteArray(), "image/" + format, source.model());
+            return AiImageResult.image(output.toByteArray(), "image/" + format, source.model());
         } catch (IOException exception) {
             throw new IllegalStateException("카드 표준 비율 이미지 변환에 실패했습니다.", exception);
         }

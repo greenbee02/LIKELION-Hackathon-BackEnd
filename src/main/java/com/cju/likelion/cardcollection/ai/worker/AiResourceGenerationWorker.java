@@ -69,7 +69,16 @@ public class AiResourceGenerationWorker {
     private void process(AiResourceGeneration resource) {
         long startedAt = System.nanoTime();
         try {
-            AiImageResult result = imageNormalizer.normalize(imageProvider.generate(resource));
+            AiImageResult result = imageProvider.generate(resource);
+            if (result.hasGeneratedData()) {
+                resource.completeData(result.generatedData(), result.model());
+                log.info("AI resource data generation completed: resourceId={}", resource.getId());
+                resourceRepository.save(resource);
+                logFinished(resource, startedAt);
+                return;
+            }
+
+            result = imageNormalizer.normalize(result);
             String generatedImageUrl = imageStorage.store(
                     resource.getId(), result.imageBytes(), result.contentType());
             resource.complete(generatedImageUrl, result.model());
@@ -87,6 +96,10 @@ public class AiResourceGenerationWorker {
             log.error("AI resource generation processing failed: resourceId={}", resource.getId(), exception);
         }
         resourceRepository.save(resource);
+        logFinished(resource, startedAt);
+    }
+
+    private void logFinished(AiResourceGeneration resource, long startedAt) {
         long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
         log.info("AI resource generation finished: resourceId={}, status={}, model={}, durationMs={}",
                 resource.getId(), resource.getGenerationStatus(), resource.getAiModel(), durationMs);

@@ -11,6 +11,7 @@ import com.cju.likelion.cardcollection.card.dto.CardCustomizationResponse;
 import com.cju.likelion.cardcollection.card.dto.CardRegistrationRequest;
 import com.cju.likelion.cardcollection.card.dto.CardResponse;
 import com.cju.likelion.cardcollection.card.dto.CustomizationCreateRequest;
+import com.cju.likelion.cardcollection.card.dto.PurchaseQrPreviewResponse;
 import com.cju.likelion.cardcollection.card.exception.CardDomainException;
 import com.cju.likelion.cardcollection.card.repository.CardCustomizationRepository;
 import com.cju.likelion.cardcollection.card.repository.CardRepository;
@@ -75,6 +76,13 @@ public class CardService {
         qr.markUsed(user, now);
         rewardUnlockService.evaluate(user);
         return CardResponse.from(card);
+    }
+
+    @Transactional(readOnly = true)
+    public PurchaseQrPreviewResponse previewPurchaseQr(String qrToken) {
+        PurchaseQr qr = purchaseQrRepository.findByQrToken(qrToken.trim())
+                .orElseThrow(() -> error("QR_TOKEN_INVALID", "유효하지 않은 구매 QR입니다.", HttpStatus.NOT_FOUND));
+        return PurchaseQrPreviewResponse.from(qr, Instant.now());
     }
 
     @Transactional(readOnly = true)

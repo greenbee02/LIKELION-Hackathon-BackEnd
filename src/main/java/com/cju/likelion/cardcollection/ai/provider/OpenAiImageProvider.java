@@ -35,6 +35,7 @@ public class OpenAiImageProvider implements AiImageProvider {
     private final String apiKey;
     private final String baseUrl;
     private final String model;
+    private final String textModel;
     private final String size;
     private final String quality;
     private final String background;
@@ -45,6 +46,7 @@ public class OpenAiImageProvider implements AiImageProvider {
             @Value("${app.ai.openai.api-key:}") String apiKey,
             @Value("${app.ai.openai.base-url:https://api.openai.com}") String baseUrl,
             @Value("${app.ai.openai.model:gpt-image-1}") String model,
+            @Value("${app.ai.openai.text-model:gpt-5-mini}") String textModel,
             @Value("${app.ai.openai.size:1024x1024}") String size,
             @Value("${app.ai.openai.quality:low}") String quality,
             @Value("${app.ai.openai.background:auto}") String background,
@@ -54,6 +56,7 @@ public class OpenAiImageProvider implements AiImageProvider {
         this.apiKey = apiKey;
         this.baseUrl = baseUrl.replaceAll("/$", "");
         this.model = model;
+        this.textModel = textModel;
         this.size = size;
         this.quality = quality;
         this.background = background;
@@ -70,6 +73,10 @@ public class OpenAiImageProvider implements AiImageProvider {
         }
 
         try {
+            if (usesStructuredData(resource.getResourceType())) {
+                return generateStructuredData(resource);
+            }
+
             String prompt = buildPrompt(resource);
             HttpResponse<String> response = resource.getSourceImageUrl() == null
                     ? sendGenerationRequest(prompt)
@@ -136,19 +143,286 @@ public class OpenAiImageProvider implements AiImageProvider {
         JsonNode image = root.path("data").path(0);
         String base64 = image.path("b64_json").asText(null);
         if (base64 != null && !base64.isBlank()) {
-            return new AiImageResult(Base64.getDecoder().decode(base64), "image/" + outputFormat, model);
+            return AiImageResult.image(Base64.getDecoder().decode(base64), "image/" + outputFormat, model);
         }
 
         String url = image.path("url").asText(null);
         if (url != null && !url.isBlank()) {
             try {
-                return new AiImageResult(downloadSourceImage(url), "image/" + outputFormat, model);
+                return AiImageResult.image(downloadSourceImage(url), "image/" + outputFormat, model);
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 throw new IOException("생성 결과 이미지 다운로드가 중단되었습니다.", exception);
             }
         }
         throw new IOException("OpenAI 응답에 생성 이미지가 없습니다.");
+    }
+
+    private AiImageResult generateColorPalette(AiResourceGeneration resource)
+            throws IOException, InterruptedException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", textModel);
+        body.put("input", colorPalettePrompt(resource));
+        body.put("text", Map.of("format", Map.of(
+                "type", "json_schema",
+                "name", "color_palette",
+                "strict", true,
+                "schema", colorPaletteSchema()
+        )));
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/v1/responses"))
+                .timeout(Duration.ofMinutes(2))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                .build();
+        HttpResponse<String> response = send(request);
+        JsonNode root = objectMapper.readTree(response.body());
+        String generatedData = responseOutputText(root);
+        validateColorPalette(generatedData);
+        return AiImageResult.data(generatedData, textModel);
+    }
+
+    private AiImageResult generateStructuredData(AiResourceGeneration resource)
+            throws IOException, InterruptedException {
+        AiResourceType resourceType = resource.getResourceType();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", textModel);
+        body.put("input", structuredDataPrompt(resource));
+        body.put("text", Map.of("format", Map.of(
+                "type", "json_schema",
+                "name", resourceType.name().toLowerCase(Locale.ROOT),
+                "strict", true,
+                "schema", structuredDataSchema(resourceType)
+        )));
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/v1/responses"))
+                .timeout(Duration.ofMinutes(2))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                .build();
+        HttpResponse<String> response = send(request);
+        JsonNode root = objectMapper.readTree(response.body());
+        String generatedData = responseOutputText(root);
+        validateStructuredData(resourceType, generatedData);
+        return AiImageResult.data(generatedData, textModel);
+    }
+
+    private boolean usesStructuredData(AiResourceType resourceType) {
+        return resourceType == AiResourceType.COLOR_PALETTE
+                || resourceType == AiResourceType.TEXT_STYLE
+                || resourceType == AiResourceType.COMPOSITION;
+    }
+
+    private String structuredDataPrompt(AiResourceGeneration resource) {
+        String prompt = resource.getPrompt() == null ? "" : resource.getPrompt().trim();
+        String options = resource.getGeneratedData() == null ? "{}" : resource.getGeneratedData();
+        String productName = resource.getProduct() == null || resource.getProduct().getName() == null
+                ? ""
+                : resource.getProduct().getName();
+        return switch (resource.getResourceType()) {
+            case COLOR_PALETTE -> colorPalettePrompt(resource);
+            case TEXT_STYLE -> "Recommend a practical typography style for a collectible product card. "
+                    + "Return only the JSON object required by the schema. "
+                    + "Use CSS-compatible font values, a numeric font weight from 100 to 900, and normalized 0 to 1 coordinates. "
+                    + "Choose a readable text color and strong contrast. "
+                    + "Product: " + productName + ". User request: " + prompt + ". Design options JSON: " + options;
+            case COMPOSITION -> "Recommend a reusable layout for a collectible product card. "
+                    + "Return only the JSON object required by the schema. "
+                    + "Use a 1000x1586 portrait canvas and normalized 0 to 1 coordinates for every layer. "
+                    + "Keep layers inside the card-safe area, use a small number of useful layers, and do not include readable text content. "
+                    + "Product: " + productName + ". User request: " + prompt + ". Design options JSON: " + options;
+            default -> throw new IllegalArgumentException("구조화 데이터가 지원되지 않는 리소스 유형입니다.");
+        };
+    }
+
+    private Map<String, Object> structuredDataSchema(AiResourceType resourceType) {
+        return switch (resourceType) {
+            case COLOR_PALETTE -> colorPaletteSchema();
+            case TEXT_STYLE -> textStyleSchema();
+            case COMPOSITION -> compositionSchema();
+            default -> throw new IllegalArgumentException("구조화 데이터가 지원되지 않는 리소스 유형입니다.");
+        };
+    }
+
+    private Map<String, Object> textStyleSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("styleName", Map.of("type", "string"));
+        properties.put("fontFamily", Map.of("type", "string"));
+        properties.put("fontWeight", Map.of("type", "integer"));
+        properties.put("fontSize", Map.of("type", "number"));
+        properties.put("letterSpacing", Map.of("type", "number"));
+        properties.put("lineHeight", Map.of("type", "number"));
+        properties.put("color", Map.of("type", "string"));
+        properties.put("textAlign", Map.of("type", "string", "enum", List.of("left", "center", "right")));
+        properties.put("maxLines", Map.of("type", "integer"));
+        properties.put("x", Map.of("type", "number"));
+        properties.put("y", Map.of("type", "number"));
+        properties.put("width", Map.of("type", "number"));
+        properties.put("height", Map.of("type", "number"));
+        properties.put("rationale", Map.of("type", "string"));
+        return objectSchema(properties, List.of(
+                "styleName", "fontFamily", "fontWeight", "fontSize", "letterSpacing", "lineHeight",
+                "color", "textAlign", "maxLines", "x", "y", "width", "height", "rationale"));
+    }
+
+    private Map<String, Object> compositionSchema() {
+        Map<String, Object> layerProperties = new LinkedHashMap<>();
+        layerProperties.put("id", Map.of("type", "string"));
+        layerProperties.put("type", Map.of("type", "string", "enum",
+                List.of("BACKGROUND", "PRODUCT", "TEXT", "BORDER", "PATTERN", "DECORATION")));
+        layerProperties.put("x", Map.of("type", "number"));
+        layerProperties.put("y", Map.of("type", "number"));
+        layerProperties.put("width", Map.of("type", "number"));
+        layerProperties.put("height", Map.of("type", "number"));
+        layerProperties.put("rotation", Map.of("type", "number"));
+        layerProperties.put("opacity", Map.of("type", "number"));
+        layerProperties.put("zIndex", Map.of("type", "integer"));
+        layerProperties.put("visible", Map.of("type", "boolean"));
+
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("layoutName", Map.of("type", "string"));
+        properties.put("canvasWidth", Map.of("type", "integer"));
+        properties.put("canvasHeight", Map.of("type", "integer"));
+        properties.put("backgroundColor", Map.of("type", "string"));
+        properties.put("layers", Map.of(
+                "type", "array",
+                "minItems", 1,
+                "maxItems", 8,
+                "items", objectSchema(layerProperties, List.of(
+                        "id", "type", "x", "y", "width", "height", "rotation", "opacity", "zIndex", "visible"))));
+        properties.put("rationale", Map.of("type", "string"));
+        return objectSchema(properties, List.of(
+                "layoutName", "canvasWidth", "canvasHeight", "backgroundColor", "layers", "rationale"));
+    }
+
+    private Map<String, Object> objectSchema(
+            Map<String, Object> properties,
+            List<String> required
+    ) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("additionalProperties", false);
+        schema.put("properties", properties);
+        schema.put("required", required);
+        return schema;
+    }
+
+    private String colorPalettePrompt(AiResourceGeneration resource) {
+        String prompt = resource.getPrompt() == null ? "" : resource.getPrompt().trim();
+        String options = resource.getGeneratedData() == null ? "{}" : resource.getGeneratedData();
+        String productName = resource.getProduct() == null || resource.getProduct().getName() == null
+                ? ""
+                : resource.getProduct().getName();
+        return "Recommend a practical color palette for a collectible product card. "
+                + "Return only the JSON object required by the schema. "
+                + "Every color must be a six-digit uppercase hexadecimal value such as #1A2B3C. "
+                + "Ensure text has strong contrast against background. "
+                + "Product: " + productName + ". "
+                + "User request: " + prompt + ". "
+                + "Design options JSON: " + options;
+    }
+
+    private Map<String, Object> colorPaletteSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("paletteName", Map.of("type", "string"));
+        properties.put("primary", Map.of("type", "string"));
+        properties.put("secondary", Map.of("type", "string"));
+        properties.put("accent", Map.of("type", "string"));
+        properties.put("background", Map.of("type", "string"));
+        properties.put("text", Map.of("type", "string"));
+        properties.put("rationale", Map.of("type", "string"));
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "object");
+        schema.put("additionalProperties", false);
+        schema.put("properties", properties);
+        schema.put("required", List.of(
+                "paletteName", "primary", "secondary", "accent", "background", "text", "rationale"));
+        return schema;
+    }
+
+    private String responseOutputText(JsonNode root) throws IOException {
+        String outputText = root.path("output_text").asText(null);
+        if (outputText != null && !outputText.isBlank()) return outputText;
+
+        for (JsonNode outputItem : root.path("output")) {
+            for (JsonNode content : outputItem.path("content")) {
+                String text = content.path("text").asText(null);
+                if (text != null && !text.isBlank()) return text;
+            }
+        }
+        throw new IOException("OpenAI 응답에 구조화 JSON이 없습니다.");
+    }
+
+    private void validateColorPalette(String generatedData) throws IOException {
+        JsonNode palette = objectMapper.readTree(generatedData);
+        for (String field : List.of("primary", "secondary", "accent", "background", "text")) {
+            String color = palette.path(field).asText("");
+            if (!color.matches("#[0-9A-Fa-f]{6}")) {
+                throw new IOException("OpenAI가 올바른 HEX 색상을 반환하지 않았습니다: " + field);
+            }
+        }
+    }
+
+    private void validateStructuredData(AiResourceType resourceType, String generatedData) throws IOException {
+        switch (resourceType) {
+            case COLOR_PALETTE -> validateColorPalette(generatedData);
+            case TEXT_STYLE -> validateTextStyle(generatedData);
+            case COMPOSITION -> validateComposition(generatedData);
+            default -> throw new IOException("지원되지 않는 구조화 리소스 유형입니다.");
+        }
+    }
+
+    private void validateTextStyle(String generatedData) throws IOException {
+        JsonNode style = objectMapper.readTree(generatedData);
+        int fontWeight = style.path("fontWeight").asInt(0);
+        double fontSize = style.path("fontSize").asDouble(-1);
+        double lineHeight = style.path("lineHeight").asDouble(-1);
+        int maxLines = style.path("maxLines").asInt(0);
+        if (fontWeight < 100 || fontWeight > 900 || fontSize <= 0 || fontSize > 200
+                || lineHeight <= 0 || lineHeight > 5 || maxLines < 1 || maxLines > 10) {
+            throw new IOException("OpenAI가 올바른 텍스트 스타일 값을 반환하지 않았습니다.");
+        }
+        validateHexColor(style.path("color").asText(""), "color");
+        validateNormalizedBounds(style, "텍스트 스타일");
+    }
+
+    private void validateComposition(String generatedData) throws IOException {
+        JsonNode composition = objectMapper.readTree(generatedData);
+        if (composition.path("canvasWidth").asInt(0) != 1000
+                || composition.path("canvasHeight").asInt(0) != 1586) {
+            throw new IOException("Composition canvas는 1000x1586이어야 합니다.");
+        }
+        validateHexColor(composition.path("backgroundColor").asText(""), "backgroundColor");
+        JsonNode layers = composition.path("layers");
+        if (!layers.isArray() || layers.isEmpty() || layers.size() > 8) {
+            throw new IOException("OpenAI가 올바른 composition layer를 반환하지 않았습니다.");
+        }
+        for (JsonNode layer : layers) {
+            validateNormalizedBounds(layer, "composition layer");
+            double rotation = layer.path("rotation").asDouble(999);
+            double opacity = layer.path("opacity").asDouble(-1);
+            if (rotation < -360 || rotation > 360 || opacity < 0 || opacity > 1) {
+                throw new IOException("OpenAI가 올바른 composition 변환 값을 반환하지 않았습니다.");
+            }
+        }
+    }
+
+    private void validateHexColor(String value, String field) throws IOException {
+        if (!value.matches("#[0-9A-Fa-f]{6}")) {
+            throw new IOException("OpenAI가 올바른 HEX 색상을 반환하지 않았습니다: " + field);
+        }
+    }
+
+    private void validateNormalizedBounds(JsonNode node, String label) throws IOException {
+        for (String field : List.of("x", "y", "width", "height")) {
+            double value = node.path(field).asDouble(-1);
+            if (value < 0 || value > 1) {
+                throw new IOException("OpenAI가 올바른 " + label + " 좌표를 반환하지 않았습니다: " + field);
+            }
+        }
     }
 
     private byte[] downloadSourceImage(String sourceImageUrl) throws IOException, InterruptedException {
