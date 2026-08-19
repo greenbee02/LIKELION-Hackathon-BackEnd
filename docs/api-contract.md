@@ -189,9 +189,40 @@ POST /api/v1/cards/{cardId}/ai-resources/compose
   "layoutData": {
     "productX": 0.5,
     "productY": 0.55
-  }
+  },
+  "layers": [
+    {
+      "id": "background-01",
+      "type": "BACKGROUND",
+      "resourceId": "resource-id-1",
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1,
+      "opacity": 0.8,
+      "zIndex": 1
+    },
+    {
+      "id": "message-01",
+      "type": "TEXT",
+      "text": "나만의 카드",
+      "x": 0.5,
+      "y": 0.82,
+      "width": 0.7,
+      "height": 0.08,
+      "styleData": {
+        "fontCategory": "SERIF",
+        "fontSize": 42,
+        "color": "#D4AF37",
+        "align": "CENTER"
+      },
+      "zIndex": 5
+    }
+  ]
 }
 ```
+
+`layers`의 좌표와 크기는 카드 전체를 `0~1`로 정규화한 값이다. 템플릿 앞면은 `BACKGROUND` 슬롯의 기본 레이어로 자동 포함되며 `sourceType`은 `TEMPLATE`, `isDefault`는 `true`, `replaceable`은 `true`로 저장한다. 사용자가 같은 `BACKGROUND` 슬롯의 AI 리소스를 선택하면 템플릿 기본값을 교체한다. `resourceId`를 사용하는 레이어는 해당 카드에 연결된 `COMPLETED` AI 리소스만 참조할 수 있으며, `TEXT` 레이어는 AI 리소스 없이 문구와 `styleData`를 사용한다. `PRODUCT` 레이어는 `resourceId`가 없으면 카드 상품의 기본 이미지를 사용한다.
 
 처리 규칙:
 

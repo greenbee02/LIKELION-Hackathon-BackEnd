@@ -341,6 +341,100 @@ AI는 추천값과 리소스를 제공하고, 실제 배치 조작은 프론트�
 - `build/generated-ai-resources`를 S3 등 영구 저장소로 교체
 - 이미지 접근 권한과 만료 URL 정책 확정
 
+### 2.9순위: 기본 카드 레이어 기반 커스터마이징 백엔드
+
+`compose` API에 레이어 기반 저장 구조를 추가했다.
+
+- 기본 템플릿 앞면 이미지를 `BACKGROUND` 슬롯의 기본 레이어로 자동 포함
+- 기본 레이어는 `sourceType = TEMPLATE`, `isDefault = true`, `replaceable = true`로 저장
+- 사용자가 같은 슬롯의 AI 리소스를 선택하면 기본 템플릿 레이어를 교체
+- `BACKGROUND`, `PRODUCT`, `BORDER`, `PATTERN`, `DECORATION`, `TEXT`, `FINISH` 레이어 지원
+- 좌표·크기는 카드 전체 기준 `0~1` 정규화 값 사용
+- AI 리소스 레이어는 요청한 카드의 `COMPLETED` 리소스만 사용 가능
+- 레이어 유형과 AI 리소스 유형이 맞지 않으면 저장 거부
+- `TEXT`는 AI 리소스 없이 문구와 `styleData` 저장 가능
+- `PRODUCT`는 AI 상품 각도 리소스 또는 상품 기본 이미지 사용 가능
+- 결과는 기존 `card_customizations.customization_data`에 `layers` 배열로 저장
+
+기존 `resourceIds`와 `layoutData` 요청 형식은 호환성을 위해 유지한다.
+
+### 2.10 작업 완료: 교체 가능한 기본 레이어 구조
+
+기존에는 `BASE_CARD`를 `locked = true`로 자동 추가해 사용자가 기본 카드 전체를 바꿀 수 없었다. 현재는 기본 카드 이미지를 잠그는 대신, 교체 가능한 기본 레이어로 저장하도록 변경했다.
+
+#### 변경 전·후
+
+~~~text
+변경 전
+템플릿 기본 카드 전체
+→ BASE_CARD 자동 추가
+→ locked = true
+→ 사용자가 기본 카드 영역을 직접 교체할 수 없음
+
+변경 후
+템플릿 front_image_url
+→ BACKGROUND 슬롯의 기본 레이어로 자동 추가
+→ sourceType = TEMPLATE
+→ isDefault = true
+→ replaceable = true
+→ 같은 슬롯의 새 리소스가 선택되면 기본 레이어 교체
+~~~
+
+#### 동작 규칙
+
+- 레이어 없이 compose하면 템플릿의 `front_image_url`이 기본 `BACKGROUND`로 유지된다.
+- `slot = BACKGROUND`, `type = BACKGROUND`인 완료 AI 리소스를 선택하면 템플릿 기본 배경을 제거하고 선택한 리소스를 저장한다.
+- `PRODUCT`, `BORDER`, `PATTERN`, `DECORATION`, `TEXT`, `FINISH`는 기본 배경 위에 추가 레이어로 저장할 수 있다.
+- compose할 때마다 `card_customizations`에 새 이력이 생성된다.
+- 현재 선택된 결과는 기존 `cards.selected_customization_id`로 가리킨다.
+- AI 결과와 기존 리소스 이력은 삭제하지 않는다.
+
+#### 레이어 요청 필드
+
+`layers` 배열의 각 요소는 다음 정보를 가진다.
+
+- `id`, `type`, `slot`
+- `resourceId`
+- `x`, `y`, `width`, `height`: 카드 전체 기준 `0~1` 정규화 좌표
+- `rotation`, `opacity`, `zIndex`
+- `visible`, `locked`
+- `text`, `styleData`
+
+`slot`이 없으면 `type`을 기본 슬롯으로 사용한다. 레이어가 같은 슬롯에 존재하면 새 레이어가 기본 레이어를 교체하는 방식이다.
+
+#### 검증 규칙
+
+- 카드가 존재하고 현재 사용자의 카드이며 `ACTIVE` 상태여야 한다.
+- `resourceId`는 해당 카드에 연결된 `COMPLETED` AI 리소스여야 한다.
+- 레이어 유형과 AI 리소스 유형이 일치해야 한다.
+- 기존 전체 카드 교체 방식인 `BASE_CARD` 요청은 더 이상 허용하지 않는다.
+- `TEXT`는 AI 리소스 없이 `text`와 `styleData`만으로 저장할 수 있다.
+- `PRODUCT`는 `PRODUCT_ANGLE` 리소스를 사용하거나 리소스 없이 상품 기본 이미지를 사용할 수 있다.
+
+#### 저장 형식 및 호환성
+
+- `customization_data`에 `composition-v2`와 `layers` 배열을 저장한다.
+- 기존 클라이언트와의 호환성을 위해 `resourceIds`, `message`, `layoutData` 요청 필드는 유지한다.
+- 현재 템플릿 기본 레이어는 기존 `front_image_url`을 fallback으로 사용한다.
+- 앞면 배경·상품·테두리 같은 자산을 템플릿에서 독립적으로 관리하려면 추후 `card_template_layers` 테이블 또는 템플릿 레이어 JSON 구조를 추가해야 한다. 해당 확장은 아직 구현하지 않았다.
+
+#### 검증 결과
+
+~~~text
+.\\gradlew.bat test --no-daemon
+BUILD SUCCESSFUL
+4 actionable tasks: 3 executed, 1 up-to-date
+~~~
+
+#### 이번 변경 파일
+
+- `src/main/java/com/cju/likelion/cardcollection/card/domain/CardLayerType.java`
+- `src/main/java/com/cju/likelion/cardcollection/card/dto/CardLayerRequest.java`
+- `src/main/java/com/cju/likelion/cardcollection/ai/dto/AiResourceCompositionRequest.java`
+- `src/main/java/com/cju/likelion/cardcollection/ai/service/AiResourceCompositionService.java`
+- `src/test/java/com/cju/likelion/cardcollection/card/CardControllerIntegrationTest.java`
+- `docs/api-contract.md`
+
 ### 3순위: 사용자 컬렉션 구현
 
 현재 구현되지 않은 테이블은 collections와 collection_cards다.
@@ -413,7 +507,7 @@ AI는 추천값과 리소스를 제공하고, 실제 배치 조작은 프론트�
 
 ## 8. 현재 작업 인수인계 결론
 
-다음 작업자는 먼저 상품·카드 API 통합 테스트를 보강하고, 오늘 추가한 지역 기반 배치 생성 API를 실제 서버에서 검증한다. 이후 `PRODUCT_ANGLE`을 테스트하고 `TEXT_STYLE`·`COLOR_PALETTE` 구조화 추천과 프론트엔드 카드 편집기를 연결한다. AI 편집 흐름이 안정화되면 사용자 컬렉션의 공개 범위·달성률 규칙을 확정한 뒤 V6 마이그레이션부터 컬렉션 구현을 시작한다.
+다음 작업자는 먼저 상품·카드 API 통합 테스트를 보강하고, 오늘 추가한 지역 기반 배치 생성 API를 실제 서버에서 검증한다. 레이어 편집에서는 템플릿 기본 `BACKGROUND` 교체와 `TEXT`·`PRODUCT` 추가를 우선 확인한다. 이후 `PRODUCT_ANGLE`을 테스트하고 `TEXT_STYLE`·`COLOR_PALETTE` 구조화 추천과 프론트엔드 카드 편집기를 연결한다. AI 편집 흐름이 안정화되면 사용자 컬렉션의 공개 범위·달성률 규칙을 확정한 뒤 V6 마이그레이션부터 컬렉션 구현을 시작한다.
 
 ## 9. 2026-08-19 작업 완료 요약
 
@@ -437,6 +531,15 @@ AI는 추천값과 리소스를 제공하고, 실제 배치 조작은 프론트�
   - 3~4개 리소스 일괄 PENDING 등록
   - 기존 단건 API와 compose API 유지
   - 통합 테스트 통과
+
+[작업 완료] 기본 카드 레이어 교체 구조
+  - 템플릿 front_image_url을 기본 BACKGROUND 레이어로 저장
+  - 같은 슬롯의 완료 AI 리소스로 기본 레이어 교체
+  - BACKGROUND·PRODUCT·BORDER·PATTERN·DECORATION·TEXT·FINISH 지원
+  - 레이어 좌표·크기 0~1 정규화
+  - composition-v2와 card_customizations.layers 저장
+  - BASE_CARD 전체 교체 요청은 CARD_BASE_LAYER_DEPRECATED로 거부
+  - 기존 resourceIds·layoutData 요청 형식 유지
 ~~~
 
-다음 작업자는 먼저 서버를 재시작하고 `POST /api/v1/cards/{cardId}/ai-resources/batch`를 호출해 실제 지역 기반 결과를 확인한다. 그 다음 `PRODUCT_ANGLE` → 구조화된 `TEXT_STYLE` 추천 → 프론트엔드 레이어 편집기 → 실제 병렬 worker 순서로 진행한다.
+다음 작업자는 먼저 서버를 재시작하고 `POST /api/v1/cards/{cardId}/ai-resources/batch`를 호출해 실제 지역 기반 결과를 확인한다. 레이어 compose는 템플릿 기본 배경 유지, AI 배경 교체, 텍스트 추가, 상품 기본 이미지 사용 순서로 검증한다. 그 다음 `PRODUCT_ANGLE` → 구조화된 `TEXT_STYLE` 추천 → 프론트엔드 레이어 편집기 → 실제 병렬 worker 순서로 진행한다.

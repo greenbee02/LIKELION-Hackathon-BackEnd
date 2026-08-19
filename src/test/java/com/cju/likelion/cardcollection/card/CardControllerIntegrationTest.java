@@ -339,9 +339,33 @@ class CardControllerIntegrationTest {
                                 {
                                   "resourceIds": ["%s"],
                                   "message": "나만의 카드",
-                                  "layoutData": {"productX": 0.5, "productY": 0.55}
+                                  "layoutData": {"productX": 0.5, "productY": 0.55},
+                                  "layers": [
+                                    {
+                                      "id": "background-01",
+                                      "type": "BACKGROUND",
+                                      "resourceId": "%s",
+                                      "x": 0,
+                                      "y": 0,
+                                      "width": 1,
+                                      "height": 1,
+                                      "opacity": 0.8,
+                                      "zIndex": 1
+                                    },
+                                    {
+                                      "id": "message-01",
+                                      "type": "TEXT",
+                                      "text": "나만의 카드",
+                                      "x": 0.5,
+                                      "y": 0.82,
+                                      "width": 0.7,
+                                      "height": 0.08,
+                                      "styleData": {"fontCategory": "SERIF", "fontSize": 42},
+                                      "zIndex": 5
+                                    }
+                                  ]
                                 }
-                                """.formatted(resourceId)))
+                                """.formatted(resourceId, resourceId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.card.id").value(cardId))
                 .andExpect(jsonPath("$.data.card.cardType").value("CUSTOMIZE"))
@@ -350,6 +374,9 @@ class CardControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.customization.aiModel").value("composition-v1"))
                 .andReturn().getResponse().getContentAsString();
         assertThat(compositionResponse).contains(resourceId.toString());
+        assertThat(compositionResponse).contains("BACKGROUND");
+        assertThat(compositionResponse).doesNotContain("template-background");
+        assertThat(compositionResponse).contains("message-01");
     }
 
     @Test

@@ -1,5 +1,7 @@
 package com.cju.likelion.cardcollection.ai.dto;
 
+import com.cju.likelion.cardcollection.card.dto.CardLayerRequest;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -14,6 +16,7 @@ public record AiResourceCompositionRequest(
         List<@NotNull(message = "resourceIds의 값은 필수입니다.") UUID> resourceIds,
         @Size(max = 1000, message = "message는 1000자 이하여야 합니다.")
         String message,
-        Map<String, Object> layoutData
+        Map<String, Object> layoutData,
+        List<@Valid CardLayerRequest> layers
 ) {
 }

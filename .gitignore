@@ -26,10 +26,25 @@ desktop.ini
 .env
 .env.*
 !.env.example
+*.secret
+*.secrets
+*.credentials
+secrets/
+credentials/
+credentials*.json
+*credentials*.json
+service-account*.json
 application-*-secret.yml
 application-*-secret.yaml
+
+# Private keys and certificate stores
 *.pem
 *.key
+*.ppk
+*.p12
+*.pfx
+*.jks
+*.keystore
 
 # Logs, temporary files, and runtime output
 *.log
