@@ -34,7 +34,7 @@
 
 ### 2.3 AI 카드 리소스 비율 표준화
 
-AI가 생성하는 배경·테두리·패턴·상품 각도 등의 이미지가 정사각형으로 저장되지 않도록 국제 카드 표준인 ISO/IEC 7810 ID-1 비율을 세로 방향으로 적용했다.
+AI가 생성하는 배경·테두리·패턴 등의 이미지가 정사각형으로 저장되지 않도록 국제 카드 표준인 ISO/IEC 7810 ID-1 비율을 세로 방향으로 적용했다.
 
 - 기준 비율: 85.60×53.98mm, 약 `1.586:1`
 - OpenAI 요청 기본 크기: `1024x1536` 세로형
@@ -44,17 +44,17 @@ AI가 생성하는 배경·테두리·패턴·상품 각도 등의 이미지가 
 
 ### 2.2 AI 배경 생성 경로 수정
 
-기존에는 모든 AI 리소스 요청에서 상품 image_url이 자동으로 sourceImageUrl에 들어갔다. 그 결과 배경 생성도 이미지 편집 경로로 처리될 수 있었다.
+기존에는 AI 리소스 요청에서 상품 image_url을 sourceImageUrl로 전달할 수 있었다. 상품 각도 생성은 원본 배경이 남아 조합 품질이 불안정하므로 신규 생성 대상에서 제외했다.
 
 현재 규칙:
 
 ~~~text
 BACKGROUND, BORDER, PATTERN, DECORATION,
 COLOR_PALETTE, TEXT_STYLE, COMPOSITION
-→ 원본 이미지 없이 생성 API 사용
+→ 상품 원본 이미지 없이 생성 API 사용
 
-PRODUCT_ANGLE
-→ sourceImageUrl 또는 상품 image_url을 원본으로 사용
+PRODUCT
+→ AI 리소스 없이 products.image_url을 기본 이미지로 사용
 ~~~
 
 수정 파일:
@@ -119,16 +119,17 @@ QR은 1회만 사용할 수 있으므로 이미 사용된 QR은 재사용하지 
 - 같은 카드에서 이미 사용한 지역 변형 번호를 확인해 다음 후보를 사용
 - 이미지·로고·읽을 수 있는 문구를 그대로 복제하지 않고 지역의 실루엣·건축·분위기만 참고하도록 프롬프트 구성
 
-기존에는 AI 리소스를 한 번에 하나씩 요청했지만, 다음 배치 API를 추가했다.
+기존에는 AI 리소스를 종류별로 하나씩 요청했지만, 이제 하나의 리소스 종류마다 3~4개 후보를 생성하는 후보 그룹 구조로 변경했다.
 
 ~~~text
 POST /api/v1/cards/{cardId}/ai-resources/batch
 ~~~
 
-- 한 번에 3~4개 요청
-- 각 리소스는 독립적인 `PENDING` 이력으로 저장
-- `BACKGROUND`, `BORDER`, `PATTERN`, `PRODUCT_ANGLE` 등 서로 다른 유형을 조합 가능
-- 완료된 결과는 기존 `compose` API에서 사용자가 선택해 카드에 적용
+- 리소스 종류는 한 번에 최대 8개 요청
+- 각 리소스 종류마다 `candidateCount` 3~4개 생성
+- 후보 하나는 독립적인 `PENDING` 이력으로 저장
+- 같은 리소스의 후보는 `candidateGroupId`로 묶음
+- 완료된 결과는 그룹별로 하나를 선택해 기존 `compose` API에서 카드에 적용
 
 현재 worker는 배치 요청을 한 번에 접수한 뒤 PENDING 작업을 순차 처리한다. 실제 AI 요청을 병렬로 실행하려면 작업 점유 상태와 동시성 제어를 추가해야 한다.
 
@@ -196,15 +197,15 @@ GET  /api/v1/cards/{cardId}/ai-resources/{resourceId}
 POST /api/v1/cards/{cardId}/ai-resources/compose
 ~~~
 
-지원 리소스 유형은 BACKGROUND, BORDER, PATTERN, PRODUCT_ANGLE, DECORATION, COLOR_PALETTE, TEXT_STYLE, COMPOSITION이다.
+지원 리소스 유형은 BACKGROUND, BORDER, PATTERN, DECORATION, COLOR_PALETTE, TEXT_STYLE, COMPOSITION이다. `PRODUCT_ANGLE`은 기존 이력 호환을 위해 타입만 남아 있으며 신규 요청은 거부한다.
 
 ### AI 지역 문맥 및 배치 생성
 
 - 카드의 구매 매장 `stores.city`를 AI 프롬프트에 자동 반영한다.
 - 서울은 광화문, 남산서울타워, 한강 야경, 북촌 기와 등 지역 후보를 순환 사용한다.
 - 같은 카드에서 이전에 사용한 지역 변형 수를 기준으로 다음 후보를 선택해 반복을 줄인다.
-- `POST /api/v1/cards/{cardId}/ai-resources/batch`로 3~4개 리소스를 한 번에 `PENDING` 등록한다.
-- 각 항목은 독립적인 생성 이력으로 저장되며, 완료 후 기존 compose API에서 원하는 결과만 조합한다.
+- `POST /api/v1/cards/{cardId}/ai-resources/batch`로 선택한 리소스 종류를 한 번에 `PENDING` 등록한다.
+- 각 리소스 종류마다 3~4개 후보가 생성되고, 후보 그룹별로 하나를 선택해 기존 compose API에서 조합한다.
 
 ## 4. 실행 및 검증 방법
 
@@ -287,9 +288,9 @@ OpenAI 계정 한도 문제가 해결된 후 진행한다.
 
 1. ~~gpt-image-2 배경 생성~~ (작업 완료)
 2. ~~테두리 생성~~ (작업 완료)
-3. PRODUCT_ANGLE 상품 각도 생성
-4. 지역 기반 배경 3~4개 배치 생성
-5. 각 결과의 `COMPLETED`와 `generatedImageUrl` 확인
+3. 상품 기본 이미지 `PRODUCT` 레이어 조합
+4. 지역 기반 배경 후보 그룹 생성(배경 1종류에서 3~4개 후보)
+5. 각 후보의 `COMPLETED`와 `generatedImageUrl` 확인
 6. `FAILED`, `REJECTED`, 타임아웃 확인
 7. AI 리소스 조합 API로 카드 적용
 8. 비용과 응답 시간 기록
@@ -303,8 +304,8 @@ OpenAI 계정 한도 문제가 해결된 후 진행한다.
 1. 서버 재시작 후 `/ai-resources/batch` 호출
 2. 서울·부산·제주 매장별 배경 후보 생성
 3. 같은 카드에서 두 번째 배치 요청 시 지역 후보 중복 여부 확인
-4. 3~4개 결과가 모두 `COMPLETED`가 될 때까지 상태 조회
-5. 완료된 배경·테두리·패턴 중 원하는 리소스만 `compose`에 전달
+4. 후보 그룹의 후보 3~4개가 모두 `COMPLETED`가 될 때까지 상태 조회
+5. 완료된 각 후보 그룹에서 하나씩 골라 배경·테두리·패턴을 `compose`에 전달
 6. 카드가 `CUSTOMIZE`로 변경되고 `card_customizations.customization_data`에 조합 정보가 저장되는지 확인
 
 ### 2.6순위: 구조화 추천 전환
@@ -332,7 +333,7 @@ AI는 추천값과 리소스를 제공하고, 실제 배치 조작은 프론트�
 
 - worker에 PENDING 작업 점유 상태 추가
 - 동일 리소스의 중복 처리 방지
-- 3~4개 AI 요청 병렬 처리 여부 결정
+- 후보 3~4개 생성 작업의 병렬 처리 여부 결정
 - OpenAI rate limit에 맞춘 동시 실행 수 제한
 - 실패한 작업 재시도 정책 확정
 - `build/generated-ai-resources`를 S3 등 영구 저장소로 교체
@@ -350,7 +351,7 @@ AI는 추천값과 리소스를 제공하고, 실제 배치 조작은 프론트�
 - AI 리소스 레이어는 요청한 카드의 `COMPLETED` 리소스만 사용 가능
 - 레이어 유형과 AI 리소스 유형이 맞지 않으면 저장 거부
 - `TEXT`는 AI 리소스 없이 문구와 `styleData` 저장 가능
-- `PRODUCT`는 AI 상품 각도 리소스 또는 상품 기본 이미지 사용 가능
+- `PRODUCT`는 AI 리소스 없이 상품 기본 이미지 사용
 - 결과는 기존 `card_customizations.customization_data`에 `layers` 배열로 저장
 
 기존 `resourceIds`와 `layoutData` 요청 형식은 호환성을 위해 유지한다.
@@ -406,7 +407,7 @@ AI는 추천값과 리소스를 제공하고, 실제 배치 조작은 프론트�
 - 레이어 유형과 AI 리소스 유형이 일치해야 한다.
 - 기존 전체 카드 교체 방식인 `BASE_CARD` 요청은 더 이상 허용하지 않는다.
 - `TEXT`는 AI 리소스 없이 `text`와 `styleData`만으로 저장할 수 있다.
-- `PRODUCT`는 `PRODUCT_ANGLE` 리소스를 사용하거나 리소스 없이 상품 기본 이미지를 사용할 수 있다.
+- `PRODUCT`는 `resourceId` 없이 상품 기본 이미지를 사용한다.
 
 #### 저장 형식 및 호환성
 
@@ -504,7 +505,7 @@ BUILD SUCCESSFUL
 
 ## 8. 현재 작업 인수인계 결론
 
-다음 작업자는 먼저 상품·카드 API 통합 테스트를 보강하고, 오늘 추가한 지역 기반 배치 생성 API를 실제 서버에서 검증한다. 레이어 편집에서는 템플릿 기본 `BACKGROUND` 교체와 `TEXT`·`PRODUCT` 추가를 우선 확인한다. 이후 `PRODUCT_ANGLE`을 테스트하고 `TEXT_STYLE`·`COLOR_PALETTE` 구조화 추천과 프론트엔드 카드 편집기를 연결한다. AI 편집 흐름이 안정화되면 사용자 컬렉션의 공개 범위·달성률 규칙을 확정한 뒤 V6 마이그레이션부터 컬렉션 구현을 시작한다.
+다음 작업자는 먼저 상품·카드 API 통합 테스트를 보강하고, 오늘 추가한 지역 기반 배치 생성 API를 실제 서버에서 검증한다. 레이어 편집에서는 템플릿 기본 `BACKGROUND` 교체와 `TEXT`·`PRODUCT` 추가를 우선 확인한다. 이후 `TEXT_STYLE`·`COLOR_PALETTE` 구조화 추천과 프론트엔드 카드 편집기를 연결한다. AI 편집 흐름이 안정화되면 사용자 컬렉션의 공개 범위·달성률 규칙을 확정한 뒤 V6 마이그레이션부터 컬렉션 구현을 시작한다.
 
 ## 9. 2026-08-19 작업 완료 요약
 
@@ -525,7 +526,8 @@ BUILD SUCCESSFUL
   - 같은 카드의 반복 후보 감소
 
 [작업 완료] AI 리소스 배치 생성 API
-  - 3~4개 리소스 일괄 PENDING 등록
+  - 리소스 종류별 3~4개 후보를 후보 그룹으로 일괄 PENDING 등록
+  - 배치 요청은 최대 8개 리소스 종류까지 지원
   - 기존 단건 API와 compose API 유지
   - 통합 테스트 통과
 
@@ -539,4 +541,4 @@ BUILD SUCCESSFUL
   - 기존 resourceIds·layoutData 요청 형식 유지
 ~~~
 
-다음 작업자는 먼저 서버를 재시작하고 `POST /api/v1/cards/{cardId}/ai-resources/batch`를 호출해 실제 지역 기반 결과를 확인한다. 레이어 compose는 템플릿 기본 배경 유지, AI 배경 교체, 텍스트 추가, 상품 기본 이미지 사용 순서로 검증한다. 그 다음 `PRODUCT_ANGLE` → 구조화된 `TEXT_STYLE` 추천 → 프론트엔드 레이어 편집기 → 실제 병렬 worker 순서로 진행한다.
+다음 작업자는 먼저 서버를 재시작하고 `POST /api/v1/cards/{cardId}/ai-resources/batch`를 호출해 실제 지역 기반 결과를 확인한다. 레이어 compose는 템플릿 기본 배경 유지, AI 배경 교체, 텍스트 추가, 상품 기본 이미지 사용 순서로 검증한다. 그 다음 구조화된 `TEXT_STYLE` 추천 → 프론트엔드 레이어 편집기 → 실제 병렬 worker 순서로 진행한다.

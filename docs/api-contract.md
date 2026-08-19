@@ -169,8 +169,8 @@ POST /api/v1/cards/{cardId}/restore-original
 AI는 카드 완성본을 직접 확정하는 역할이 아니라 사용자가 조합할 후보 리소스를 생성한다. 현재 지원하는 리소스 유형은 다음과 같다.
 
 ```text
-BACKGROUND | BORDER | PATTERN | PRODUCT_ANGLE
-DECORATION | COLOR_PALETTE | TEXT_STYLE | COMPOSITION
+BACKGROUND | BORDER | PATTERN | DECORATION
+COLOR_PALETTE | TEXT_STYLE | COMPOSITION
 ```
 
 ```text
@@ -181,9 +181,9 @@ GET  /api/v1/cards/{cardId}/ai-resources/{resourceId}
 POST /api/v1/cards/{cardId}/ai-resources/compose
 ```
 
-생성 요청은 비동기 처리를 위해 `202 Accepted`와 함께 `PENDING` 이력을 반환한다. 백그라운드 worker가 PENDING 작업을 OpenAI Images API로 처리한 뒤 결과 이미지 URL과 상태를 갱신한다.
+생성 요청은 비동기 처리를 위해 `202 Accepted`와 함께 후보 그룹을 반환한다. 리소스 종류 하나당 기본 4개 후보가 생성되며, `candidateCount`로 3개 또는 4개를 선택할 수 있다. 후보 하나는 독립적인 `PENDING` 이력으로 저장되고, 같은 리소스의 후보들은 `candidateGroupId`로 묶인다.
 
-한 번에 3~4개의 후보 리소스를 생성하려면 배치 API를 사용한다. 각 항목은 독립적인 `PENDING` 이력으로 저장되며, 사용자는 완료된 결과 중 원하는 배경·테두리·패턴·상품 각도 등을 선택해 조합한다.
+배치 API는 이제 리소스 종류를 1~8개까지 받을 수 있다. 즉 배치의 3~4개 제한은 제거되었고, 각 리소스 종류마다 3~4개 후보가 생성된다. 사용자는 그룹별 후보 중 하나를 선택해 카드에 조합한다.
 
 `POST /api/v1/cards/{cardId}/ai-resources/batch`
 
@@ -192,6 +192,7 @@ POST /api/v1/cards/{cardId}/ai-resources/compose
   "resources": [
     {
       "resourceType": "BACKGROUND",
+      "candidateCount": 4,
       "prompt": "고급스럽고 차분한 서울 지역 배경",
       "options": { "style": "luxury", "color": "black" }
     },
@@ -209,30 +210,38 @@ POST /api/v1/cards/{cardId}/ai-resources/compose
 }
 ```
 
-배치 요청은 3~4개 항목만 허용한다. 구매 카드의 `purchase_store.city`를 기준으로 지역 문맥을 자동 추가하며, 서울은 광화문·남산서울타워·한강 야경·북촌 기와 등 후보를 순환해 같은 카드에서 생성되는 리소스가 서로 다른 지역 변형을 사용하도록 한다. 지역이 등록되지 않은 경우에는 매장 도시의 지역 건축·풍경을 일반 문맥으로 사용한다.
+각 `resources` 항목의 `candidateCount`는 3 또는 4만 허용한다. 생략하면 4개로 처리한다. 구매 카드의 `purchase_store.city`를 기준으로 지역 문맥을 자동 추가하며, 후보 인덱스에 따라 같은 리소스 그룹 안에서도 서로 다른 지역 변형을 사용하도록 한다. 지역이 등록되지 않은 경우에는 매장 도시의 지역 건축·풍경을 일반 문맥으로 사용한다.
+
+응답은 다음처럼 리소스 종류별 후보 그룹으로 반환한다.
 
 ```json
 {
-  "resourceType": "PRODUCT_ANGLE",
-  "templateId": "template-id",
-  "prompt": "상품을 오른쪽 45도에서 본 이미지",
-  "sourceImageUrl": "https://cdn.example.com/products/product.png",
-  "options": {
-    "angle": 45,
-    "background": "transparent"
-  }
+  "cardId": "card-id",
+  "groups": [
+    {
+      "candidateGroupId": "group-id",
+      "resourceType": "BACKGROUND",
+      "candidateCount": 4,
+      "candidates": [
+        { "id": "candidate-1", "candidateIndex": 1, "status": "PENDING" },
+        { "id": "candidate-2", "candidateIndex": 2, "status": "PENDING" },
+        { "id": "candidate-3", "candidateIndex": 3, "status": "PENDING" },
+        { "id": "candidate-4", "candidateIndex": 4, "status": "PENDING" }
+      ]
+    }
+  ]
 }
 ```
 
-`PRODUCT_ANGLE` 요청에서 `sourceImageUrl`을 생략하면 카드 상품의 `products.image_url`을 원본으로 사용한다. 상품 각도 이미지 생성에서는 원본 이미지가 외부에서 접근 가능한 HTTP(S) URL이어야 한다. 생성이 끝나면 결과 이미지 URL은 `generatedImageUrl`, 이미지 외 결과는 `generatedData`에 저장한다. `generatedData`는 색상·패턴·레이아웃 등 최종 조합에 사용할 JSON 문자열이다.
+상품 이미지는 AI 리소스로 생성하지 않는다. `PRODUCT` 레이어에서 `resourceId`를 생략하면 카드 상품의 `products.image_url`을 그대로 사용한다. 상품 원본 이미지를 AI 생성 요청에 전달하는 `sourceImageUrl` 필드도 신규 요청 계약에서 제외한다.
 
-`BACKGROUND`, `BORDER`, `PATTERN`, `DECORATION`, `COLOR_PALETTE`, `TEXT_STYLE`, `COMPOSITION`은 원본 상품 이미지를 사용하지 않는 독립 리소스 생성이다. `sourceImageUrl`은 `PRODUCT_ANGLE`에서만 사용한다.
+`BACKGROUND`, `BORDER`, `PATTERN`, `DECORATION`, `COLOR_PALETTE`, `TEXT_STYLE`, `COMPOSITION`은 상품 원본 이미지와 독립적으로 생성한다. 생성이 끝나면 결과 이미지 URL은 `generatedImageUrl`, 이미지 외 결과는 `generatedData`에 저장한다. `generatedData`는 색상·패턴·레이아웃 등 최종 조합에 사용할 JSON 문자열이다.
 
 `COLOR_PALETTE`는 이미지 생성이 아니라 OpenAI Structured Outputs를 이용한 색상 추천 JSON으로 생성된다. 완료 시 `generatedImageUrl`은 `null`이고 `generatedData`에는 다음 필드가 저장된다: `paletteName`, `primary`, `secondary`, `accent`, `background`, `text`, `rationale`. 색상 값은 `#RRGGBB` 형식이다.
 
 `TEXT_STYLE`도 이미지 생성 없이 폰트·크기·굵기·자간·줄 간격·색상·정렬·최대 줄 수·정규화 좌표를 담은 JSON으로 생성된다. `COMPOSITION`은 이미지 대신 `1000x1586` 카드 캔버스, 배경색, 레이어별 유형·좌표·크기·회전·투명도·순서를 담은 JSON으로 생성된다. 두 유형 모두 완료 시 `generatedImageUrl`은 `null`이고 결과는 `generatedData`에 저장된다.
 
-생성 상태는 `PENDING → COMPLETED | FAILED | REJECTED`로 관리하며, 기존 결과를 더 이상 후보로 노출하지 않을 때 `ARCHIVED`로 변경한다. 생성 요청은 worker가 실제 AI provider에 전달하고 결과를 갱신한다.
+생성 상태는 후보별로 `PENDING → COMPLETED | FAILED | REJECTED`로 관리하며, 기존 결과를 더 이상 후보로 노출하지 않을 때 `ARCHIVED`로 변경한다. 생성 요청은 worker가 후보별로 실제 AI provider에 전달하고 결과를 갱신한다.
 
 모든 AI 이미지 리소스는 ISO/IEC 7810 ID-1 비율을 세로 방향으로 적용한다. API 요청은 세로형 `1024x1536`을 기본으로 사용하고, 저장 직전에 중앙 크롭·리사이즈하여 최종 결과를 `1000x1586`으로 맞춘다. 비율은 가로:세로 약 `1:1.586`이며, 중요한 요소는 카드 안전 영역 안에 배치하도록 프롬프트에 포함한다.
 
@@ -391,7 +400,7 @@ Content-Type: application/json
 - `CUSTOMIZATION_NOT_FOUND`: 커스터마이징 이력 없음
 - `CUSTOMIZATION_NOT_COMPLETED`: 완료되지 않은 커스터마이징 선택 시도
 - `AI_RESOURCE_NOT_FOUND`: AI 리소스 생성 이력 없음
-- `AI_SOURCE_IMAGE_REQUIRED`: 상품 각도 이미지 생성에 원본 이미지가 없음
+- `AI_RESOURCE_TYPE_UNSUPPORTED`: 지원하지 않는 AI 리소스 유형 요청
 - `TEMPLATE_INACTIVE`: 비활성 카드 템플릿 사용 시도
 - `TEMPLATE_CARD_TYPE_NOT_ALLOWED`: 카드 타입에 허용되지 않은 템플릿 사용 시도
 - `PRODUCT_INACTIVE`: 비활성 상품 또는 경험의 카드 발급 시도

@@ -69,6 +69,16 @@ public class AiResourceGenerationWorker {
     private void process(AiResourceGeneration resource) {
         long startedAt = System.nanoTime();
         try {
+            if (resource.getResourceType() == com.cju.likelion.cardcollection.ai.domain.AiResourceType.PRODUCT_ANGLE) {
+                resource.reject(
+                        "PRODUCT_ANGLE은 신규 AI 생성 대상에서 제외되었습니다.",
+                        "system"
+                );
+                resourceRepository.save(resource);
+                logFinished(resource, startedAt);
+                return;
+            }
+
             AiImageResult result = imageProvider.generate(resource);
             if (result.hasGeneratedData()) {
                 resource.completeData(result.generatedData(), result.model());

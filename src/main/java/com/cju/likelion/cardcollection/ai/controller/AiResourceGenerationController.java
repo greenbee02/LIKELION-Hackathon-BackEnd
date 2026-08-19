@@ -5,6 +5,7 @@ import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationResponse;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceBatchGenerationRequest;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceCompositionRequest;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceCompositionResponse;
+import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationBatchResponse;
 import com.cju.likelion.cardcollection.ai.service.AiResourceCompositionService;
 import com.cju.likelion.cardcollection.ai.service.AiResourceGenerationService;
 import com.cju.likelion.cardcollection.common.api.ApiResponse;
@@ -38,7 +39,7 @@ public class AiResourceGenerationController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<AiResourceGenerationResponse>> request(
+    public ResponseEntity<ApiResponse<AiResourceGenerationBatchResponse>> request(
             Authentication authentication,
             @PathVariable UUID cardId,
             @Valid @RequestBody AiResourceGenerationRequest request
@@ -49,7 +50,7 @@ public class AiResourceGenerationController {
     }
 
     @PostMapping("/batch")
-    public ResponseEntity<ApiResponse<List<AiResourceGenerationResponse>>> requestBatch(
+    public ResponseEntity<ApiResponse<AiResourceGenerationBatchResponse>> requestBatch(
             Authentication authentication,
             @PathVariable UUID cardId,
             @Valid @RequestBody AiResourceBatchGenerationRequest request
@@ -60,7 +61,7 @@ public class AiResourceGenerationController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<AiResourceGenerationResponse>>> list(
+    public ResponseEntity<ApiResponse<AiResourceGenerationBatchResponse>> list(
             Authentication authentication,
             @PathVariable UUID cardId
     ) {

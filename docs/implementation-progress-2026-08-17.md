@@ -287,7 +287,7 @@ POST /api/v1/cards/{cardId}/restore-original
 
 카드 완성본을 AI에게 통째로 맡기지 않고, 사용자가 조합할 후보 리소스를 별도 이력으로 관리한다.
 
-- 배경, 테두리, 패턴, 장식, 색상 조합, 문구 스타일, 상품 각도 이미지, 조합 추천을 지원한다.
+- 배경, 테두리, 패턴, 장식, 색상 조합, 문구 스타일, 조합 추천을 지원한다. 상품 이미지는 원본 상품 이미지를 사용한다.
 - `ai_resource_generations`는 카드·상품·템플릿·요청 옵션·생성 결과·처리 상태를 저장한다.
 - 생성 요청은 `PENDING`으로 저장하고, 실제 provider가 결과를 저장할 수 있도록 `COMPLETED`, `FAILED`, `REJECTED`, `ARCHIVED` 상태를 둔다.
 - 최종 사용자가 선택한 리소스 조합은 기존 `card_customizations.customization_data`에 기록한다.

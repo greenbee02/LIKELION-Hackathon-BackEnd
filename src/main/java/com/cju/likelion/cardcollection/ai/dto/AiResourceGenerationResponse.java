@@ -7,6 +7,9 @@ import java.util.UUID;
 
 public record AiResourceGenerationResponse(
         UUID id,
+        UUID candidateGroupId,
+        Integer candidateIndex,
+        Integer candidateCount,
         UUID cardId,
         UUID productId,
         UUID templateId,
@@ -25,6 +28,9 @@ public record AiResourceGenerationResponse(
     public static AiResourceGenerationResponse from(AiResourceGeneration resource) {
         return new AiResourceGenerationResponse(
                 resource.getId(),
+                resource.getCandidateGroupId(),
+                resource.getCandidateIndex(),
+                resource.getCandidateCount(),
                 resource.getCard().getId(),
                 resource.getProduct() == null ? null : resource.getProduct().getId(),
                 resource.getTemplate() == null ? null : resource.getTemplate().getId(),

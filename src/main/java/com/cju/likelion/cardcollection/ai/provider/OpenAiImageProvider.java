@@ -227,11 +227,13 @@ public class OpenAiImageProvider implements AiImageProvider {
                     + "Return only the JSON object required by the schema. "
                     + "Use CSS-compatible font values, a numeric font weight from 100 to 900, and normalized 0 to 1 coordinates. "
                     + "Choose a readable text color and strong contrast. "
+                    + candidateInstruction(resource)
                     + "Product: " + productName + ". User request: " + prompt + ". Design options JSON: " + options;
             case COMPOSITION -> "Recommend a reusable layout for a collectible product card. "
                     + "Return only the JSON object required by the schema. "
                     + "Use a 1000x1586 portrait canvas and normalized 0 to 1 coordinates for every layer. "
                     + "Keep layers inside the card-safe area, use a small number of useful layers, and do not include readable text content. "
+                    + candidateInstruction(resource)
                     + "Product: " + productName + ". User request: " + prompt + ". Design options JSON: " + options;
             default -> throw new IllegalArgumentException("구조화 데이터가 지원되지 않는 리소스 유형입니다.");
         };
@@ -319,6 +321,7 @@ public class OpenAiImageProvider implements AiImageProvider {
                 + "Return only the JSON object required by the schema. "
                 + "Every color must be a six-digit uppercase hexadecimal value such as #1A2B3C. "
                 + "Ensure text has strong contrast against background. "
+                + candidateInstruction(resource)
                 + "Product: " + productName + ". "
                 + "User request: " + prompt + ". "
                 + "Design options JSON: " + options;
@@ -488,7 +491,16 @@ public class OpenAiImageProvider implements AiImageProvider {
                 " Design options JSON: " + resource.getGeneratedData();
         return CARD_CANVAS_INSTRUCTION + regionalInstruction(resource) + typeInstruction
                 + ". Do not create a complete branded card, logo, or unrelated text. "
+                + candidateInstruction(resource)
                 + prompt + options;
+    }
+
+    private String candidateInstruction(AiResourceGeneration resource) {
+        int candidateIndex = readCandidateIndex(resource.getGeneratedData());
+        int candidateCount = readCandidateCount(resource.getGeneratedData());
+        if (candidateCount <= 0) return "";
+        return "This is recommendation candidate " + candidateIndex + " of " + candidateCount
+                + ". Make it clearly different from the other candidates while preserving the same requirements. ";
     }
 
     private String regionalInstruction(AiResourceGeneration resource) {
@@ -524,6 +536,24 @@ public class OpenAiImageProvider implements AiImageProvider {
         if (generatedData == null || generatedData.isBlank()) return 0;
         try {
             return Math.max(0, objectMapper.readTree(generatedData).path("_regionalVariant").asInt(0));
+        } catch (IOException ignored) {
+            return 0;
+        }
+    }
+
+    private int readCandidateIndex(String generatedData) {
+        if (generatedData == null || generatedData.isBlank()) return 1;
+        try {
+            return Math.max(1, objectMapper.readTree(generatedData).path("_candidateIndex").asInt(1));
+        } catch (IOException ignored) {
+            return 1;
+        }
+    }
+
+    private int readCandidateCount(String generatedData) {
+        if (generatedData == null || generatedData.isBlank()) return 0;
+        try {
+            return Math.max(0, objectMapper.readTree(generatedData).path("_candidateCount").asInt(0));
         } catch (IOException ignored) {
             return 0;
         }

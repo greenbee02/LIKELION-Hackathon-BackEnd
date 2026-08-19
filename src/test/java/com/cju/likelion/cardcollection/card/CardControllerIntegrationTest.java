@@ -211,14 +211,13 @@ class CardControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "resourceType": "PRODUCT_ANGLE",
-                                  "prompt": "상품을 오른쪽 45도에서 본 이미지",
-                                  "sourceImageUrl": "https://example.com/product.png",
-                                  "options": {"angle": 45, "background": "transparent"}
+                                  "resourceType": "BACKGROUND",
+                                  "prompt": "차분한 카드 배경",
+                                  "options": {"tone": "calm"}
                                 }
                                 """))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.data.resourceType").value("PRODUCT_ANGLE"))
+                .andExpect(jsonPath("$.data.resourceType").value("BACKGROUND"))
                 .andExpect(jsonPath("$.data.status").value("PENDING"))
                 .andExpect(jsonPath("$.data.productId").value(fixture.product().getId().toString()))
                 .andReturn().getResponse().getContentAsString();

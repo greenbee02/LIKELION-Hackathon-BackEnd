@@ -86,6 +86,18 @@ public class AiResourceCompositionService {
             );
         }
 
+        Set<UUID> selectedCandidateGroups = new HashSet<>();
+        if (resources.stream()
+                .map(AiResourceGeneration::getCandidateGroupId)
+                .filter(java.util.Objects::nonNull)
+                .anyMatch(groupId -> !selectedCandidateGroups.add(groupId))) {
+            throw error(
+                    "AI_RESOURCE_CANDIDATE_DUPLICATED",
+                    "같은 리소스 종류의 후보는 한 번에 하나만 선택할 수 있습니다.",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+
         String customizationData = serializeComposition(card, resources, request.layoutData(), request.layers());
         CardTemplate template = card.getTemplate();
         CardCustomization customization = CardCustomization.composed(
@@ -272,7 +284,7 @@ public class AiResourceCompositionService {
     private boolean isCompatible(CardLayerType layerType, com.cju.likelion.cardcollection.ai.domain.AiResourceType resourceType) {
         return switch (layerType) {
             case BACKGROUND -> resourceType == com.cju.likelion.cardcollection.ai.domain.AiResourceType.BACKGROUND;
-            case PRODUCT -> resourceType == com.cju.likelion.cardcollection.ai.domain.AiResourceType.PRODUCT_ANGLE;
+            case PRODUCT -> false;
             case BORDER -> resourceType == com.cju.likelion.cardcollection.ai.domain.AiResourceType.BORDER;
             case PATTERN -> resourceType == com.cju.likelion.cardcollection.ai.domain.AiResourceType.PATTERN;
             case DECORATION -> resourceType == com.cju.likelion.cardcollection.ai.domain.AiResourceType.DECORATION;

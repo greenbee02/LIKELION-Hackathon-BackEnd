@@ -51,8 +51,8 @@
   - `ARCHIVED`: 정상 생성됐지만 현재 사용하지 않는 과거 이력
   - 선택 상태는 `cards.selected_customization_id`에서 관리한다.
 - `ai_resource_generations`: 카드에 조합할 AI 리소스 생성 요청과 결과 이력
-  - 카드 완성본을 직접 생성하는 테이블이 아니라 배경·테두리·패턴·상품 각도 이미지 등의 후보 리소스를 관리한다.
-  - `resource_type`: `BACKGROUND`, `BORDER`, `PATTERN`, `PRODUCT_ANGLE`, `DECORATION`, `COLOR_PALETTE`, `TEXT_STYLE`, `COMPOSITION`
+  - 카드 완성본을 직접 생성하는 테이블이 아니라 배경·테두리·패턴·장식 등의 후보 리소스를 관리한다.
+  - `resource_type`: `BACKGROUND`, `BORDER`, `PATTERN`, `DECORATION`, `COLOR_PALETTE`, `TEXT_STYLE`, `COMPOSITION`
   - `generation_status`: `PENDING`, `COMPLETED`, `FAILED`, `REJECTED`, `ARCHIVED`
   - `generated_data`에는 색상 조합, 레이아웃, 추천 옵션 등 이미지 외 결과를 JSON 문자열로 저장한다.
   - 실제 선택된 조합은 기존 `card_customizations.customization_data`에 저장하고, 생성 이력은 삭제하지 않는다.

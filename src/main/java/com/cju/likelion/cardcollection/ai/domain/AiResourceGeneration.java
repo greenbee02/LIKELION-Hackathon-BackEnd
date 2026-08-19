@@ -30,6 +30,15 @@ public class AiResourceGeneration {
     @Id
     private UUID id;
 
+    @Column(name = "candidate_group_id")
+    private UUID candidateGroupId;
+
+    @Column(name = "candidate_index")
+    private Integer candidateIndex;
+
+    @Column(name = "candidate_count")
+    private Integer candidateCount;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "card_id", nullable = false)
     private Card card;
@@ -82,9 +91,15 @@ public class AiResourceGeneration {
             String prompt,
             String sourceImageUrl,
             String generatedData,
+            UUID candidateGroupId,
+            Integer candidateIndex,
+            Integer candidateCount,
             Instant now
     ) {
         this.id = UUID.randomUUID();
+        this.candidateGroupId = candidateGroupId;
+        this.candidateIndex = candidateIndex;
+        this.candidateCount = candidateCount;
         this.card = card;
         this.product = product;
         this.template = template;
@@ -105,10 +120,14 @@ public class AiResourceGeneration {
             String prompt,
             String sourceImageUrl,
             String generatedData,
+            UUID candidateGroupId,
+            Integer candidateIndex,
+            Integer candidateCount,
             Instant now
     ) {
         return new AiResourceGeneration(
-                card, product, template, resourceType, prompt, sourceImageUrl, generatedData, now);
+                card, product, template, resourceType, prompt, sourceImageUrl, generatedData,
+                candidateGroupId, candidateIndex, candidateCount, now);
     }
 
     public void complete(String generatedImageUrl, String aiModel) {

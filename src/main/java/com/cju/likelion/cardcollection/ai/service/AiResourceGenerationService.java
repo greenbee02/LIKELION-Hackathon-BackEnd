@@ -5,6 +5,8 @@ import com.cju.likelion.cardcollection.ai.domain.AiResourceType;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceBatchGenerationRequest;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationRequest;
 import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationResponse;
+import com.cju.likelion.cardcollection.ai.dto.AiResourceCandidateGroupResponse;
+import com.cju.likelion.cardcollection.ai.dto.AiResourceGenerationBatchResponse;
 import com.cju.likelion.cardcollection.ai.repository.AiResourceGenerationRepository;
 import com.cju.likelion.cardcollection.card.domain.Card;
 import com.cju.likelion.cardcollection.card.exception.CardDomainException;
@@ -19,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,19 +49,21 @@ public class AiResourceGenerationService {
     }
 
     @Transactional
-    public AiResourceGenerationResponse request(
+    public AiResourceGenerationBatchResponse request(
             UUID userId,
             UUID cardId,
             AiResourceGenerationRequest request
     ) {
         Card card = findCard(userId, cardId);
         requireActive(card);
-        AiResourceGeneration resource = createResource(card, request, nextRegionalVariant(card.getId(), 0));
-        return AiResourceGenerationResponse.from(resourceRepository.save(resource));
+        rejectUnsupportedResourceType(request.resourceType());
+        UUID candidateGroupId = UUID.randomUUID();
+        List<AiResourceGeneration> resources = createCandidates(card, request, candidateGroupId);
+        return toBatchResponse(cardId, resourceRepository.saveAll(resources));
     }
 
     @Transactional
-    public List<AiResourceGenerationResponse> requestBatch(
+    public AiResourceGenerationBatchResponse requestBatch(
             UUID userId,
             UUID cardId,
             AiResourceBatchGenerationRequest batchRequest
@@ -66,79 +71,81 @@ public class AiResourceGenerationService {
         Card card = findCard(userId, cardId);
         requireActive(card);
 
-        int startingVariant = nextRegionalVariant(cardId, 0);
-        List<AiResourceGenerationResponse> responses = new ArrayList<>();
-        for (int index = 0; index < batchRequest.resources().size(); index++) {
-            AiResourceGeneration resource = createResource(
-                    card,
-                    batchRequest.resources().get(index),
-                    startingVariant + index
-            );
-            responses.add(AiResourceGenerationResponse.from(resourceRepository.save(resource)));
+        Set<AiResourceType> resourceTypes = new java.util.HashSet<>();
+        List<AiResourceGeneration> resources = new ArrayList<>();
+        for (AiResourceGenerationRequest request : batchRequest.resources()) {
+            if (!resourceTypes.add(request.resourceType())) {
+                throw error(
+                        "AI_RESOURCE_TYPE_DUPLICATED",
+                        "같은 리소스 종류는 한 번의 추천 요청에 중복할 수 없습니다.",
+                        HttpStatus.BAD_REQUEST
+                );
+            }
+            rejectUnsupportedResourceType(request.resourceType());
+            resources.addAll(createCandidates(card, request, UUID.randomUUID()));
         }
-        return responses;
+        return toBatchResponse(cardId, resourceRepository.saveAll(resources));
+    }
+
+    private List<AiResourceGeneration> createCandidates(
+            Card card,
+            AiResourceGenerationRequest request,
+            UUID candidateGroupId
+    ) {
+        int candidateCount = request.candidateCount() == null ? 4 : request.candidateCount();
+        List<AiResourceGeneration> resources = new ArrayList<>();
+        for (int candidateIndex = 1; candidateIndex <= candidateCount; candidateIndex++) {
+            resources.add(createResource(card, request, candidateGroupId, candidateIndex, candidateCount));
+        }
+        return resources;
     }
 
     private AiResourceGeneration createResource(
             Card card,
             AiResourceGenerationRequest request,
-            int regionalVariant
+            UUID candidateGroupId,
+            int candidateIndex,
+            int candidateCount
     ) {
         CardTemplate template = resolveTemplate(card, request.templateId());
-        String sourceImageUrl = request.sourceImageUrl();
-        if (request.resourceType() == AiResourceType.PRODUCT_ANGLE && sourceImageUrl == null) {
-            sourceImageUrl = card.getProduct().getImageUrl();
-        }
-
-        if (request.resourceType() == AiResourceType.PRODUCT_ANGLE && sourceImageUrl == null) {
-            throw error(
-                    "AI_SOURCE_IMAGE_REQUIRED",
-                    "상품 각도 이미지 생성에는 원본 상품 이미지가 필요합니다.",
-                    HttpStatus.BAD_REQUEST
-            );
-        }
-
         return AiResourceGeneration.pending(
                 card,
                 card.getProduct(),
                 template,
                 request.resourceType(),
                 request.prompt(),
-                sourceImageUrl,
-                serializeOptions(enrichOptions(request.options(), regionalVariant)),
+                null,
+                serializeOptions(enrichOptions(request.options(), candidateIndex - 1, candidateCount)),
+                candidateGroupId,
+                candidateIndex,
+                candidateCount,
                 Instant.now()
         );
     }
 
-    private Map<String, Object> enrichOptions(Map<String, Object> options, int regionalVariant) {
+    private void rejectUnsupportedResourceType(AiResourceType resourceType) {
+        if (resourceType == AiResourceType.PRODUCT_ANGLE) {
+            throw error(
+                    "AI_RESOURCE_TYPE_UNSUPPORTED",
+                    "PRODUCT_ANGLE은 AI 생성 대상에서 제외되었습니다. PRODUCT 레이어에서 상품 기본 이미지를 사용하세요.",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
+    private Map<String, Object> enrichOptions(Map<String, Object> options, int regionalVariant, int candidateCount) {
         Map<String, Object> enriched = new LinkedHashMap<>();
         if (options != null) enriched.putAll(options);
         enriched.putIfAbsent("_regionalVariant", regionalVariant);
+        enriched.put("_candidateIndex", regionalVariant + 1);
+        enriched.put("_candidateCount", candidateCount);
         return enriched;
     }
 
-    private int nextRegionalVariant(UUID cardId, int offset) {
-        long existing = resourceRepository.findByCardIdOrderByCreatedAtDesc(cardId).stream()
-                .filter(resource -> isRegionalResource(resource.getResourceType()))
-                .count();
-        return Math.toIntExact(existing) + offset;
-    }
-
-    private boolean isRegionalResource(AiResourceType resourceType) {
-        return Set.of(
-                AiResourceType.BACKGROUND,
-                AiResourceType.PATTERN,
-                AiResourceType.DECORATION,
-                AiResourceType.COMPOSITION
-        ).contains(resourceType);
-    }
-
     @Transactional(readOnly = true)
-    public List<AiResourceGenerationResponse> list(UUID userId, UUID cardId) {
+    public AiResourceGenerationBatchResponse list(UUID userId, UUID cardId) {
         findCard(userId, cardId);
-        return resourceRepository.findByCardIdOrderByCreatedAtDesc(cardId).stream()
-                .map(AiResourceGenerationResponse::from)
-                .toList();
+        return toBatchResponse(cardId, resourceRepository.findByCardIdOrderByCreatedAtDesc(cardId));
     }
 
     @Transactional(readOnly = true)
@@ -151,6 +158,39 @@ public class AiResourceGenerationService {
                         HttpStatus.NOT_FOUND
                 ));
         return AiResourceGenerationResponse.from(resource);
+    }
+
+    private AiResourceGenerationBatchResponse toBatchResponse(
+            UUID cardId,
+            List<AiResourceGeneration> resources
+    ) {
+        Map<UUID, List<AiResourceGeneration>> grouped = new LinkedHashMap<>();
+        for (AiResourceGeneration resource : resources) {
+            UUID key = resource.getCandidateGroupId() == null
+                    ? resource.getId()
+                    : resource.getCandidateGroupId();
+            grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(resource);
+        }
+
+        List<AiResourceCandidateGroupResponse> groups = grouped.values().stream()
+                .map(candidates -> {
+                    List<AiResourceGenerationResponse> responses = candidates.stream()
+                            .sorted(Comparator.comparing(
+                                    AiResourceGeneration::getCandidateIndex,
+                                    Comparator.nullsLast(Comparator.naturalOrder())))
+                            .map(AiResourceGenerationResponse::from)
+                            .toList();
+                    AiResourceGeneration first = candidates.get(0);
+                    int count = first.getCandidateCount() == null ? responses.size() : first.getCandidateCount();
+                    return new AiResourceCandidateGroupResponse(
+                            first.getCandidateGroupId(),
+                            first.getResourceType().name(),
+                            count,
+                            responses
+                    );
+                })
+                .toList();
+        return new AiResourceGenerationBatchResponse(cardId, groups);
     }
 
     private Card findCard(UUID userId, UUID cardId) {
