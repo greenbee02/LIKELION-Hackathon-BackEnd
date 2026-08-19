@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:54329/cardcollection_test}
+    username: ${TEST_DB_USERNAME:cardcollection}
+    password: ${TEST_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  h2:
+    console:
+      enabled: false
+
+app:
+  ai:
+    openai:
+      enabled: false

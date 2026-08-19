@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("local")
+@Profile({"local", "test"})
 @RequestMapping("/api/v1/local/demo")
 public class LocalDemoController {
 

@@ -32,10 +32,9 @@ WITH OWNER = cardcollection;
 백엔드 프로젝트 최상단에서 PowerShell을 열고 다음 환경변수를 설정한다.
 
 ```powershell
-$env:DB_URL = "jdbc:postgresql://localhost:54329/cardcollection_test"
-$env:DB_USERNAME = "cardcollection"
-$env:DB_PASSWORD = "1234567890"
-$env:SPRING_PROFILES_ACTIVE = "prod"
+$env:TEST_DB_URL = "jdbc:postgresql://localhost:54329/cardcollection_test"
+$env:TEST_DB_USERNAME = "cardcollection"
+$env:TEST_DB_PASSWORD = "팀에서_정한_테스트_DB_비밀번호"
 ```
 
 환경변수는 현재 PowerShell 창에서만 유지된다. 실제 비밀번호는 Git이나 설정 파일에 직접 작성하지 않는다.
@@ -52,7 +51,7 @@ $env:SPRING_PROFILES_ACTIVE = "prod"
 BUILD SUCCESSFUL
 ```
 
-테스트 과정에서 `cardcollection_test`에 Flyway V1~V7이 적용되고 API 통합 테스트용 데이터가 생성됨. 실제 개발 DB인 `cardcollection`에는 영향을 주지 않음.
+테스트는 `test` 프로필로 고정되며 PostgreSQL 드라이버와 `cardcollection_test` 데이터베이스만 사용한다. 테스트 과정에서 Flyway V1~V8이 적용되고 API 통합 테스트용 데이터가 생성된다. 실제 개발 DB인 `cardcollection`에는 영향을 주지 않는다.
 
 ## 4. 개발 서버 실행으로 복귀
 
@@ -82,4 +81,4 @@ http://localhost:8080/swagger-ui/index.html
 - `cardcollection`: 실제 로컬 개발 및 시연 DB
 - `cardcollection_test`: PostgreSQL 통합 테스트 전용 DB
 - 테스트를 실제 `cardcollection`에 연결하면 테스트 데이터가 추가될 수 있으므로 반드시 테스트 DB를 사용합니다.
-- 현재 H2에서는 V7의 `jsonb_build_object()`를 지원하지 않아 Flyway 실행이 실패합니다.
+- 테스트는 H2를 사용하지 않는다. H2는 `local` 프로필로 애플리케이션을 빠르게 실행할 때만 사용한다.

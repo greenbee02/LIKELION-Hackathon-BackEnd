@@ -9,11 +9,14 @@ import com.cju.likelion.cardcollection.ai.repository.AiResourceGenerationReposit
 import com.cju.likelion.cardcollection.ai.storage.GeneratedImageStorage;
 import com.cju.likelion.cardcollection.ai.storage.CardAspectRatioImageNormalizer;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -21,14 +24,23 @@ import java.util.UUID;
 public class AiResourceGenerationWorker {
 
     private final AiResourceGenerationRepository resourceRepository;
+    private final AiResourceGenerationClaimService claimService;
     private final AiImageProvider imageProvider;
     private final GeneratedImageStorage imageStorage;
     private final CardAspectRatioImageNormalizer imageNormalizer;
     private final boolean enabled;
     private final String apiKey;
 
+    @Value("${app.ai.worker.max-attempts:3}")
+    private int maxAttempts;
+
+    @Value("${app.ai.worker.retry-delay-ms:10000}")
+    private long retryDelayMs;
+
+    @Autowired
     public AiResourceGenerationWorker(
             AiResourceGenerationRepository resourceRepository,
+            AiResourceGenerationClaimService claimService,
             AiImageProvider imageProvider,
             GeneratedImageStorage imageStorage,
             CardAspectRatioImageNormalizer imageNormalizer,
@@ -36,6 +48,7 @@ public class AiResourceGenerationWorker {
             @Value("${app.ai.openai.api-key:}") String apiKey
     ) {
         this.resourceRepository = resourceRepository;
+        this.claimService = claimService;
         this.imageProvider = imageProvider;
         this.imageStorage = imageStorage;
         this.imageNormalizer = imageNormalizer;
@@ -43,30 +56,42 @@ public class AiResourceGenerationWorker {
         this.apiKey = apiKey;
     }
 
+    public AiResourceGenerationWorker(
+            AiResourceGenerationRepository resourceRepository,
+            AiImageProvider imageProvider,
+            GeneratedImageStorage imageStorage,
+            CardAspectRatioImageNormalizer imageNormalizer,
+            boolean enabled,
+            String apiKey
+    ) {
+        this(
+                resourceRepository,
+                new AiResourceGenerationClaimService(resourceRepository, Duration.ofMinutes(15).toMillis()),
+                imageProvider,
+                imageStorage,
+                imageNormalizer,
+                enabled,
+                apiKey
+        );
+    }
+
     @Scheduled(fixedDelayString = "${app.ai.worker.fixed-delay-ms:5000}")
-    @Transactional
     public void processNext() {
         if (!enabled || apiKey == null || apiKey.isBlank()) return;
 
-        AiResourceGeneration resource = resourceRepository
-                .findFirstByGenerationStatusOrderByCreatedAtAsc(AiResourceStatus.PENDING)
-                .orElse(null);
-        if (resource == null) return;
-
-        process(resource);
+        Optional<UUID> resourceId = claimService.claimNext();
+        resourceId.ifPresent(this::processClaimed);
     }
 
-    @Transactional
     public void process(UUID resourceId) {
         if (!enabled || apiKey == null || apiKey.isBlank()) return;
-        resourceRepository.findById(resourceId).ifPresent(resource -> {
-            if (resource.getGenerationStatus() == AiResourceStatus.PENDING) {
-                process(resource);
-            }
-        });
+        if (claimService.claim(resourceId)) processClaimed(resourceId);
     }
 
-    private void process(AiResourceGeneration resource) {
+    private void processClaimed(UUID resourceId) {
+        AiResourceGeneration resource = resourceRepository.findById(resourceId).orElse(null);
+        if (resource == null || resource.getGenerationStatus() != AiResourceStatus.PROCESSING) return;
+
         long startedAt = System.nanoTime();
         try {
             if (resource.getResourceType() == com.cju.likelion.cardcollection.ai.domain.AiResourceType.PRODUCT_ANGLE) {
@@ -97,16 +122,32 @@ public class AiResourceGenerationWorker {
             if (exception.isRejected()) {
                 resource.reject(exception.getMessage(), "openai");
             } else {
-                resource.fail(exception.getMessage(), "openai");
+                scheduleRetryOrFail(resource, exception.getMessage(), "openai");
             }
             log.warn("AI resource generation failed: resourceId={}, status={}",
                     resource.getId(), resource.getGenerationStatus(), exception);
         } catch (RuntimeException exception) {
-            resource.fail(exception.getMessage(), "openai");
+            scheduleRetryOrFail(resource, exception.getMessage(), "openai");
             log.error("AI resource generation processing failed: resourceId={}", resource.getId(), exception);
         }
         resourceRepository.save(resource);
         logFinished(resource, startedAt);
+    }
+
+    private void scheduleRetryOrFail(AiResourceGeneration resource, String reason, String model) {
+        long exponent = Math.max(0, resource.getAttemptCount() - 1);
+        long multiplier = 1L << Math.min(exponent, 5);
+        long delay = Math.min(retryDelayMs * multiplier, Duration.ofMinutes(5).toMillis());
+        boolean retried = resource.retryOrFail(
+                reason,
+                model,
+                maxAttempts,
+                Instant.now().plusMillis(delay)
+        );
+        if (retried) {
+            log.info("AI resource generation scheduled for retry: resourceId={}, attempt={}, nextAttemptAt={}",
+                    resource.getId(), resource.getAttemptCount(), resource.getNextAttemptAt());
+        }
     }
 
     private void logFinished(AiResourceGeneration resource, long startedAt) {

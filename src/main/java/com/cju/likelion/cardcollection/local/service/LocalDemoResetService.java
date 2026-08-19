@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile("local")
+@Profile({"local", "test"})
 public class LocalDemoResetService {
 
     private static final String DEMO_QR_CONDITION = "qr_token LIKE 'MCM-DEMO-2026-%'";

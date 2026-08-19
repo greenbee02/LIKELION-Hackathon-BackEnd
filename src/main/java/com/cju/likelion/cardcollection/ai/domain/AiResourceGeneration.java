@@ -77,6 +77,15 @@ public class AiResourceGeneration {
     @Column(name = "failure_reason", length = 2000)
     private String failureReason;
 
+    @Column(name = "processing_started_at")
+    private Instant processingStartedAt;
+
+    @Column(name = "attempt_count", nullable = false)
+    private int attemptCount;
+
+    @Column(name = "next_attempt_at")
+    private Instant nextAttemptAt;
+
     @Column(nullable = false)
     private Instant createdAt;
 
@@ -108,6 +117,7 @@ public class AiResourceGeneration {
         this.sourceImageUrl = sourceImageUrl;
         this.generatedData = generatedData;
         this.generationStatus = AiResourceStatus.PENDING;
+        this.attemptCount = 0;
         this.createdAt = now;
         this.updatedAt = now;
     }
@@ -135,6 +145,7 @@ public class AiResourceGeneration {
         this.aiModel = aiModel;
         this.generationStatus = AiResourceStatus.COMPLETED;
         this.failureReason = null;
+        clearProcessingState();
     }
 
     public void completeData(String generatedData, String aiModel) {
@@ -143,18 +154,38 @@ public class AiResourceGeneration {
         this.aiModel = aiModel;
         this.generationStatus = AiResourceStatus.COMPLETED;
         this.failureReason = null;
+        clearProcessingState();
     }
 
-    public void fail(String failureReason, String aiModel) {
+    public boolean retryOrFail(
+            String failureReason,
+            String aiModel,
+            int maxAttempts,
+            Instant nextAttemptAt
+    ) {
         this.aiModel = aiModel;
         this.failureReason = truncate(failureReason);
+        clearProcessingState();
+        if (attemptCount < maxAttempts) {
+            this.generationStatus = AiResourceStatus.PENDING;
+            this.nextAttemptAt = nextAttemptAt;
+            return true;
+        }
         this.generationStatus = AiResourceStatus.FAILED;
+        this.nextAttemptAt = null;
+        return false;
     }
 
     public void reject(String failureReason, String aiModel) {
         this.aiModel = aiModel;
         this.failureReason = truncate(failureReason);
         this.generationStatus = AiResourceStatus.REJECTED;
+        clearProcessingState();
+    }
+
+    private void clearProcessingState() {
+        this.processingStartedAt = null;
+        this.nextAttemptAt = null;
     }
 
     private String truncate(String value) {
