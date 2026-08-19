@@ -43,6 +43,64 @@ page (기본 0) | size (기본 20, 최대 100)
 
 응답은 `{ items, page, size, totalElements, totalPages }` 형태다. 공식 컬렉션 소속 상품 조회는 각 항목의 `required`, `displayOrder`도 반환한다.
 
+## 사용자 개인 컬렉션 API
+
+개인 컬렉션은 사용자의 보유 카드를 사진첩처럼 분류하는 비공개 `CUSTOM` 컬렉션이다. 모든 API는 JWT 인증이 필요하며, 소유자만 자신의 컬렉션을 조회·변경할 수 있다.
+
+```text
+POST   /api/v1/collections
+GET    /api/v1/collections
+GET    /api/v1/collections/{collectionId}
+PATCH  /api/v1/collections/{collectionId}
+DELETE /api/v1/collections/{collectionId}
+POST   /api/v1/collections/{collectionId}/cards
+DELETE /api/v1/collections/{collectionId}/cards/{cardId}
+```
+
+컬렉션 생성 요청:
+
+```json
+{
+  "name": "서울 컬렉션",
+  "description": "서울에서 만난 MCM",
+  "coverImageUrl": "/images/collections/seoul.png"
+}
+```
+
+카드 추가 요청:
+
+```json
+{
+  "cardId": "card-id"
+}
+```
+
+처리 규칙:
+
+- 생성되는 컬렉션은 항상 `collectionType = CUSTOM`, `isPublic = false`다.
+- 빈 컬렉션 생성을 허용한다.
+- 같은 카드를 여러 컬렉션에 추가할 수 있다.
+- 같은 카드의 동일 컬렉션 중복 추가는 허용하지 않는다.
+- 카드 추가·제거 시에도 전체 내 카드 목록에서는 카드가 사라지지 않는다.
+- 다른 사용자의 카드 또는 컬렉션에는 접근할 수 없다.
+- AI 컬렉션 제안·저장은 후속 작업으로 분리한다.
+
+## 리워드·이벤트 API
+
+리워드 달성률은 공식 컬렉션의 `is_required = true` 상품을 기준으로 계산한다. 같은 상품 카드를 여러 장 보유해도 상품 종류 하나로만 인정하며, `ACTIVE` 카드만 계산에 포함한다. 모든 API는 JWT 인증이 필요하다.
+
+```text
+GET  /api/v1/rewards/progress
+GET  /api/v1/rewards/my
+POST /api/v1/rewards/{userRewardId}/claim
+```
+
+`GET /rewards/progress`는 공식 컬렉션별 필수 상품 수, 보유 수, 달성률과 연결된 리워드·이벤트의 해금 여부를 반환한다.
+
+`GET /rewards/my`는 현재 사용자의 해금 리워드·이벤트 목록을 반환한다. 동일 리워드 또는 이벤트는 사용자당 한 번만 해금된다.
+
+`POST /rewards/{userRewardId}/claim`은 `UNLOCKED` 상태의 리워드에 수령 확인용 `claimCode`를 발급한다. 현재 MVP에서는 매장 직원 검증 기능이 없으므로 상태를 `CLAIMED`로 바꾸지 않으며, 실제 수령 처리는 후속 운영자·매장 기능에서 확정한다.
+
 
 ### 카드 등록
 
@@ -336,6 +394,9 @@ Content-Type: application/json
 - `CARD_NOT_ACTIVE`: 차단 또는 폐기 상태 카드의 변경 시도
 - `TEMPLATE_BRAND_MISMATCH`: 카드 상품과 다른 브랜드 템플릿 사용 시도
 - `DB_CONSTRAINT_VIOLATION`: 유니크 또는 외래키 제약 위반
+- `COLLECTION_NOT_FOUND`: 접근할 수 없는 개인 컬렉션 또는 존재하지 않는 컬렉션
+- `COLLECTION_CARD_NOT_OWNED`: 본인 소유가 아닌 카드 추가 시도
+- `COLLECTION_CARD_ALREADY_ADDED`: 동일 컬렉션에 카드 중복 추가 시도
 
 ## 구현·운영 참고
 

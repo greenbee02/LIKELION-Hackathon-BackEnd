@@ -6,6 +6,7 @@ import com.cju.likelion.cardcollection.auth.exception.InvalidCredentialsExceptio
 import com.cju.likelion.cardcollection.auth.exception.OAuthLoginException;
 import com.cju.likelion.cardcollection.card.exception.CardDomainException;
 import com.cju.likelion.cardcollection.catalog.service.CatalogDomainException;
+import com.cju.likelion.cardcollection.collection.exception.CollectionDomainException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -42,6 +43,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(CatalogDomainException.class)
     public ResponseEntity<ApiErrorResponse> handleCatalogDomain(CatalogDomainException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(new ApiErrorResponse(exception.getCode(), exception.getMessage()));
+    }
+
+    @ExceptionHandler(CollectionDomainException.class)
+    public ResponseEntity<ApiErrorResponse> handleCollectionDomain(CollectionDomainException exception) {
         return ResponseEntity.status(exception.getStatus())
                 .body(new ApiErrorResponse(exception.getCode(), exception.getMessage()));
     }
