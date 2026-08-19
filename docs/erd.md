@@ -2,7 +2,8 @@
 
 ## 기준
 
-- 현재 DB 설계 기준 파일: `DataBase/Schema.sql`
+- 실제 실행·운영 DB 기준: PostgreSQL Flyway `src/main/resources/db/migration/V1~V9`
+- `DataBase/Schema.sql`은 초기 MySQL 참고용 스키마이며 실행 기준이 아니다.
 - 식별자는 UUID 문자열을 사용한다.
 - 상품과 경험은 `products`에서 함께 관리한다.
 - 공식 컬렉션과 상품·경험은 연결 테이블을 통해 다대다로 연결한다.
@@ -138,4 +139,4 @@ erDiagram
 - `card_templates`는 `image_url` 하나로 합치지 않고 앞면·뒷면 이미지 컬럼을 유지한다.
 - `physical_cards`는 `physical_token`, `digital_card_id`, `user_reward_id`를 사용한다.
 
-따라서 이 문서는 현재 `Schema.sql`의 구조를 기준으로 확장한 ERD이며, 위 차이점은 카드 도메인 마이그레이션 시 추가로 정리해야 한다.
+따라서 현재 구현과 데이터베이스 변경은 PostgreSQL Flyway V1~V9을 우선으로 확인한다. 이 문서와 `Schema.sql`의 차이는 참고용 스키마의 잔여 차이로 관리한다.

@@ -2,7 +2,7 @@
 
 ## 1. 문서 목적
 
-이 문서는 2026-08-19까지 진행한 작업과 다음 작업자가 바로 이어서 개발할 수 있도록 현재 상태, 검증 결과, 작업 순서를 정리한 문서다.
+이 문서는 2026-08-19까지 진행한 작업의 기록이다. 이후 PostgreSQL Flyway V8·V9가 추가되었으므로, 현재 실행·테스트 기준은 [POSTGRESQL_TEST_GUIDE.md](./POSTGRESQL_TEST_GUIDE.md)와 Flyway `V1~V9`을 우선한다.
 
 현행 기준 문서는 다음과 같다.
 
@@ -67,11 +67,7 @@ src/main/java/com/cju/likelion/cardcollection/ai/service/AiResourceGenerationSer
 
 ### 2.3 PostgreSQL 테스트 데이터 보완
 
-다음 테스트 시드 파일을 추가했다.
-
-~~~text
-DataBase/test_seed_postgresql.sql
-~~~
+당시 계획했던 `DataBase/test_seed_postgresql.sql`은 현재 저장소에 존재하지 않는다. 현재 시연 데이터 기준은 Flyway `V7__insert_demo_seed_data.sql`이며, 추가 시드는 새 Flyway 마이그레이션으로 관리한다.
 
 포함 데이터:
 
@@ -238,12 +234,7 @@ API Key는 문서·Git·채팅에 기록하지 않는다.
 
 ### PostgreSQL 테스트 시드
 
-PowerShell 파이프 방식은 한글 인코딩 문제가 발생할 수 있으므로 파일을 컨테이너에 복사해 실행한다.
-
-~~~powershell
-docker cp .\DataBase\test_seed_postgresql.sql luxury-card-postgres:/tmp/test_seed_postgresql.sql
-docker exec luxury-card-postgres psql -v ON_ERROR_STOP=1 -U cardcollection -d cardcollection -f /tmp/test_seed_postgresql.sql
-~~~
+`DataBase/test_seed_postgresql.sql`은 현재 존재하지 않는다. 시연 데이터는 Flyway `V7__insert_demo_seed_data.sql`으로 적용하며, PostgreSQL 테스트 DB 준비와 실행은 [POSTGRESQL_TEST_GUIDE.md](./POSTGRESQL_TEST_GUIDE.md)를 따른다.
 
 ## 5. 다음 작업 순서
 
@@ -277,7 +268,7 @@ docker exec luxury-card-postgres psql -v ON_ERROR_STOP=1 -U cardcollection -d ca
 완료 기준:
 
 ~~~text
-H2 통합 테스트 통과
+PostgreSQL 통합 테스트 통과
 PostgreSQL 핵심 시나리오 수동 확인
 API 계약 문서와 실제 응답 일치
 ~~~
@@ -490,15 +481,15 @@ BUILD SUCCESSFUL
 → API 계약·인수인계 문서 갱신
 ~~~
 
-기존 V1~V5 마이그레이션은 수정하지 않는다. 새 DB 변경은 V6부터 추가한다.
+적용된 V1~V9 마이그레이션은 수정하지 않는다. 새 DB 변경은 V10부터 추가한다.
 
 ## 7. 작업 시작 전 확인 파일
 
 1. docs/implementation-handoff.md
 2. docs/api-contract.md
 3. docs/erd.md
-4. src/main/resources/db/migration/V4__expand_product_and_card_domain.sql
-5. src/main/resources/db/migration/V5__add_ai_resource_generations.sql
+4. src/main/resources/db/migration/V1__init.sql ~ V8__add_ai_resource_candidate_groups.sql
+5. docs/POSTGRESQL_TEST_GUIDE.md
 6. src/main/java/com/cju/likelion/cardcollection/card/service/CardService.java
 7. src/main/java/com/cju/likelion/cardcollection/ai/service/AiResourceGenerationService.java
 8. src/test/java/com/cju/likelion/cardcollection/card/CardControllerIntegrationTest.java

@@ -1,5 +1,7 @@
 # 구현 진행 현황 및 다음 작업 인수인계
 
+> 이 문서는 2026-08-17 시점의 작업 기록이다. 현재 실행·테스트 DB 기준은 [POSTGRESQL_TEST_GUIDE.md](./POSTGRESQL_TEST_GUIDE.md)와 PostgreSQL Flyway `V1~V9`이다.
+
 ## 1. 현재 상태
 
 럭셔리 상품·경험 구매 정보를 구매 QR로 인증하고, 디지털 카드·커스터마이징·컬렉션·리워드로 확장하는 Spring Boot 백엔드다.

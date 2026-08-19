@@ -1,6 +1,9 @@
 -- ============================================================
 -- Luxury Collection - MySQL 8.0+
 -- ============================================================
+-- 참고용 초기 MySQL 스키마다. 현재 애플리케이션 실행·운영 DB 기준은
+-- src/main/resources/db/migration/ 의 PostgreSQL Flyway V1~V9이며,
+-- 이 파일을 Flyway 또는 운영 DB에 직접 실행하지 않는다.
 -- 필요시 DROP 주석제거 후 사용
 -- DROP DATABASE IF EXISTS luxury_collection;
 CREATE DATABASE luxury_collection

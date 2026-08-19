@@ -24,24 +24,21 @@
 - Spring Web, Spring Data JPA, Spring Security
 - JWT, OAuth2 Client
 - Flyway 10.20.1
-- 로컬: H2 PostgreSQL 호환 모드
-- 검증 DB: PostgreSQL 16
+- 개발·통합 테스트·운영 기준: PostgreSQL 16
+- H2 local 프로필: 기존 호환용이며 V1~V9 전체 Flyway 검증에는 사용하지 않음
 - 빌드: Gradle Wrapper
 
-기본 실행:
+PostgreSQL 실행:
 
 ```powershell
-cd D:\cupToLion\LIKELION-Hackathon-BackEnd
+$env:DB_URL = "jdbc:postgresql://localhost:54329/cardcollection"
+$env:DB_USERNAME = "cardcollection"
+$env:DB_PASSWORD = "팀에서_정한_DB_비밀번호"
+$env:SPRING_PROFILES_ACTIVE = "prod"
 .\gradlew.bat bootRun --no-daemon
 ```
 
-테스트:
-
-```powershell
-.\gradlew.bat test --no-daemon
-```
-
-PostgreSQL 실행 시에는 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`를 환경변수로 설정하고 `prod` 프로필을 사용한다.
+테스트 전용 DB 설정과 실행 명령은 [POSTGRESQL_TEST_GUIDE.md](./POSTGRESQL_TEST_GUIDE.md)를 따른다.
 
 ## 3. 구현 완료 범위
 
@@ -97,6 +94,10 @@ V2__add_social_accounts.sql
 V3__add_user_withdrawal.sql
 V4__expand_product_and_card_domain.sql
 V5__add_ai_resource_generations.sql
+V6__add_collection_reward_and_ai_domain.sql
+V7__insert_demo_seed_data.sql
+V8__add_ai_resource_candidate_groups.sql
+V9__add_ai_resource_worker_operability.sql
 ```
 
 주요 테이블:
@@ -116,13 +117,9 @@ ai_resource_generations
 - DB 컬럼은 `purchase_store_id`를 유지하고 API 응답에서는 `storeId`로 제공한다.
 - 카드 원본 타입은 `original_card_type`에 보존한다.
 - AI 선택 결과는 `cards.selected_customization_id`가 참조한다.
-- 새 DB 변경은 V6 이후 마이그레이션으로 추가한다.
+- 새 DB 변경은 V10 이후 마이그레이션으로 추가한다.
 
-PostgreSQL 테스트 데이터:
-
-```text
-DataBase/test_seed_postgresql.sql
-```
+시연 데이터는 Flyway `V7__insert_demo_seed_data.sql`을 기준으로 관리한다. `DataBase/test_seed_postgresql.sql`은 현재 저장소에 없으므로 참조하지 않는다.
 
 ## 5. 주요 API
 
@@ -180,8 +177,7 @@ API 요청: 정상 전달
 - 커스터마이징 선택·원본 복원 테스트
 - 상품 조회 및 필터 테스트
 - AI 리소스 PENDING·Worker·조합 테스트
-- H2 기반 Gradle 테스트 통과
-- PostgreSQL V1~V4 마이그레이션 및 애플리케이션 기동 검증
+- PostgreSQL V1~V9 Flyway·통합 테스트를 공식 검증 기준으로 사용
 
 ## 8. 앞으로의 작업 순서
 
@@ -250,8 +246,8 @@ ERD·상태 전이 확정
 
 ## 9. 주의사항
 
-- V1~V5 기존 마이그레이션은 수정하지 않는다.
+- 적용된 V1~V9 마이그레이션은 수정하지 않는다. 새 DB 변경은 V10 이후에 추가한다.
 - JWT Secret·OAuth Secret·OpenAI API Key는 환경변수로만 관리한다.
 - API Key를 Git이나 문서에 기록하지 않는다.
-- `DataBase/seed_data.sql`은 MySQL 참고용이며 Flyway 마이그레이션으로 사용하지 않는다.
+- `DataBase/Schema.sql`, `DataBase/seed_data.sql`은 MySQL 참고용이며 Flyway 마이그레이션으로 사용하지 않는다.
 - 컬렉션·리워드·이벤트·실물 카드는 아직 Entity와 API가 구현되지 않았다.

@@ -415,5 +415,5 @@ Content-Type: application/json
 
 - 상품·공식 컬렉션·템플릿 조회 API는 로그인 없이 사용할 수 있다.
 - 카드·커스터마이징·AI 리소스 API는 JWT 인증이 필요하다.
-- 실제 DB는 Flyway V1~V5 마이그레이션을 기준으로 한다.
-- AI 생성 결과는 현재 로컬 저장소에 저장되며 운영에서는 영구 저장소로 교체해야 한다.
+- 실제 DB는 PostgreSQL Flyway V1~V9 마이그레이션을 기준으로 한다. `DataBase/Schema.sql`은 MySQL 참고용이다.
+- AI 생성 결과는 현재 `build/generated-ai-resources` 로컬 저장소에 저장된다. 영구 저장소 전환은 필요하지만 현재 MVP 범위 밖이다.

@@ -1,6 +1,6 @@
 # PostgreSQL 테스트 실행 안내
 
-V6, V7 Flyway 파일이 추가되면서 기존 H2에서는 PostgreSQL 전용 문법을 처리할 수 없다. 따라서 DB 및 통합 테스트는 H2가 아닌 PostgreSQL로 실행해야 함.
+V6~V9 Flyway 파일에는 PostgreSQL 전용 문법이 포함되어 있다. 따라서 DB·Flyway·통합 테스트의 공식 기준은 H2가 아닌 PostgreSQL이다. 기존 H2 local 프로필은 호환 목적으로만 유지하며 V1~V9 전체 마이그레이션 검증에는 사용하지 않는다.
 
 ## 1. 사전 조건
 
@@ -51,7 +51,7 @@ $env:TEST_DB_PASSWORD = "팀에서_정한_테스트_DB_비밀번호"
 BUILD SUCCESSFUL
 ```
 
-테스트는 `test` 프로필로 고정되며 PostgreSQL 드라이버와 `cardcollection_test` 데이터베이스만 사용한다. 테스트 과정에서 Flyway V1~V8이 적용되고 API 통합 테스트용 데이터가 생성된다. 실제 개발 DB인 `cardcollection`에는 영향을 주지 않는다.
+테스트는 `test` 프로필로 고정되며 PostgreSQL 드라이버와 `cardcollection_test` 데이터베이스만 사용한다. 테스트 과정에서 Flyway V1~V9이 적용되고 API 통합 테스트용 데이터가 생성된다. 실제 개발 DB인 `cardcollection`에는 영향을 주지 않는다.
 
 ## 4. 개발 서버 실행으로 복귀
 
@@ -82,3 +82,4 @@ http://localhost:8080/swagger-ui/index.html
 - `cardcollection_test`: PostgreSQL 통합 테스트 전용 DB
 - 테스트를 실제 `cardcollection`에 연결하면 테스트 데이터가 추가될 수 있으므로 반드시 테스트 DB를 사용합니다.
 - 테스트는 H2를 사용하지 않는다. H2는 `local` 프로필로 애플리케이션을 빠르게 실행할 때만 사용한다.
+- H2는 V7의 `jsonb_build_object()`와 V8 이후 PostgreSQL 마이그레이션 문법을 처리하지 못하므로, V1~V9 전체 Flyway 검증에는 사용하지 않는다.
