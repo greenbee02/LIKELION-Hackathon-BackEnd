@@ -80,6 +80,27 @@ class AuthControllerIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void withdrawnUserCannotLoginAgain() throws Exception {
+        String email = uniqueEmail();
+        signup(email);
+        String token = login(email);
+
+        mockMvc.perform(delete("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "password": "password123"
+                                }
+                                """.formatted(email)))
+                .andExpect(status().isUnauthorized());
+    }
+
     private void signup(String email) throws Exception {
         mockMvc.perform(post("/api/v1/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
