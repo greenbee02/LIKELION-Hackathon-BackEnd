@@ -29,6 +29,7 @@ app:
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   ai:
     provider: ${AI_PROVIDER:openai}
+    source-image-base-url: ${AI_SOURCE_IMAGE_BASE_URL:}
     worker:
       fixed-delay-ms: ${AI_WORKER_FIXED_DELAY_MS:5000}
       max-attempts: ${AI_WORKER_MAX_ATTEMPTS:3}

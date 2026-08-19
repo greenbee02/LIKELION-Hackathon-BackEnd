@@ -220,6 +220,7 @@ class CardControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.resourceType").value("BACKGROUND"))
                 .andExpect(jsonPath("$.data.status").value("PENDING"))
                 .andExpect(jsonPath("$.data.productId").value(fixture.product().getId().toString()))
+                .andExpect(jsonPath("$.data.sourceImageUrl").value("/images/products/prod_001.png"))
                 .andReturn().getResponse().getContentAsString();
         String resourceId = objectMapper.readTree(resourceResponse).path("data").path("id").asText();
 
@@ -573,7 +574,9 @@ class CardControllerIntegrationTest {
     private Fixture fixture(boolean limited) {
         Brand brand = brandRepository.save(Brand.of("테스트 브랜드 " + UUID.randomUUID()));
         Store store = storeRepository.save(Store.of(brand, "테스트 매장", "KR", "Seoul"));
-        Product product = productRepository.save(Product.of(brand, "테스트 상품", limited));
+        Product product = Product.of(brand, "테스트 상품", limited);
+        ReflectionTestUtils.setField(product, "imageUrl", "/images/products/prod_001.png");
+        product = productRepository.save(product);
         templateRepository.save(CardTemplate.of(
                 brand,
                 "테스트 템플릿 " + UUID.randomUUID(),

@@ -40,6 +40,7 @@ public class OpenAiImageProvider implements AiImageProvider {
     private final String quality;
     private final String background;
     private final String outputFormat;
+    private final String sourceImageBaseUrl;
 
     public OpenAiImageProvider(
             ObjectMapper objectMapper,
@@ -50,7 +51,8 @@ public class OpenAiImageProvider implements AiImageProvider {
             @Value("${app.ai.openai.size:1024x1024}") String size,
             @Value("${app.ai.openai.quality:low}") String quality,
             @Value("${app.ai.openai.background:auto}") String background,
-            @Value("${app.ai.openai.output-format:png}") String outputFormat
+            @Value("${app.ai.openai.output-format:png}") String outputFormat,
+            @Value("${app.ai.source-image-base-url:}") String sourceImageBaseUrl
     ) {
         this.objectMapper = objectMapper;
         this.apiKey = apiKey;
@@ -61,6 +63,9 @@ public class OpenAiImageProvider implements AiImageProvider {
         this.quality = quality;
         this.background = background;
         this.outputFormat = outputFormat;
+        this.sourceImageBaseUrl = sourceImageBaseUrl == null
+                ? ""
+                : sourceImageBaseUrl.replaceAll("/$", "");
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -431,7 +436,7 @@ public class OpenAiImageProvider implements AiImageProvider {
     private byte[] downloadSourceImage(String sourceImageUrl) throws IOException, InterruptedException {
         URI uri;
         try {
-            uri = URI.create(sourceImageUrl);
+            uri = resolveSourceImageUri(sourceImageUrl);
         } catch (IllegalArgumentException exception) {
             throw new IOException("sourceImageUrl 형식이 올바르지 않습니다.", exception);
         }
@@ -447,6 +452,17 @@ public class OpenAiImageProvider implements AiImageProvider {
             throw new IOException("원본 이미지 다운로드 실패: HTTP " + response.statusCode());
         }
         return response.body();
+    }
+
+    private URI resolveSourceImageUri(String sourceImageUrl) {
+        URI requested = URI.create(sourceImageUrl);
+        if (requested.isAbsolute()) return requested;
+        if (sourceImageBaseUrl.isBlank()) {
+            throw new IllegalArgumentException(
+                    "상대 경로 상품 이미지를 사용하려면 app.ai.source-image-base-url 설정이 필요합니다.");
+        }
+        URI base = URI.create(sourceImageBaseUrl + "/");
+        return base.resolve(requested);
     }
 
     private byte[] multipartBody(String boundary, String prompt, byte[] image) throws IOException {
@@ -491,8 +507,25 @@ public class OpenAiImageProvider implements AiImageProvider {
                 " Design options JSON: " + resource.getGeneratedData();
         return CARD_CANVAS_INSTRUCTION + regionalInstruction(resource) + typeInstruction
                 + ". Do not create a complete branded card, logo, or unrelated text. "
+                + productInstruction(resource)
                 + candidateInstruction(resource)
                 + prompt + options;
+    }
+
+    private String productInstruction(AiResourceGeneration resource) {
+        if (resource.getResourceType() != AiResourceType.BACKGROUND
+                || resource.getSourceImageUrl() == null
+                || resource.getSourceImageUrl().isBlank()) {
+            return "";
+        }
+        String productName = resource.getProduct() == null || resource.getProduct().getName() == null
+                ? "the supplied product"
+                : resource.getProduct().getName();
+        return "Use the supplied product image as the exact product reference. "
+                + "Include one complete " + productName + " in the generated scene. "
+                + "Preserve its silhouette, proportions, colors, logo, labels, and readable text. "
+                + "Do not redraw, replace, duplicate, crop, or invent product details. "
+                + "Create only the surrounding background, lighting, contact shadow, and natural integration. ";
     }
 
     private String candidateInstruction(AiResourceGeneration resource) {

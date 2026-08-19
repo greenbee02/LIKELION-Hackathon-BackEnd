@@ -57,6 +57,7 @@ public class AiResourceGenerationService {
         Card card = findCard(userId, cardId);
         requireActive(card);
         rejectUnsupportedResourceType(request.resourceType());
+        requireProductImage(request.resourceType(), card);
         UUID candidateGroupId = UUID.randomUUID();
         List<AiResourceGeneration> resources = createCandidates(card, request, candidateGroupId);
         return toBatchResponse(cardId, resourceRepository.saveAll(resources));
@@ -82,6 +83,7 @@ public class AiResourceGenerationService {
                 );
             }
             rejectUnsupportedResourceType(request.resourceType());
+            requireProductImage(request.resourceType(), card);
             resources.addAll(createCandidates(card, request, UUID.randomUUID()));
         }
         return toBatchResponse(cardId, resourceRepository.saveAll(resources));
@@ -108,13 +110,17 @@ public class AiResourceGenerationService {
             int candidateCount
     ) {
         CardTemplate template = resolveTemplate(card, request.templateId());
+        String sourceImageUrl = request.resourceType() == AiResourceType.BACKGROUND
+                && card.getProduct() != null
+                ? card.getProduct().getImageUrl()
+                : null;
         return AiResourceGeneration.pending(
                 card,
                 card.getProduct(),
                 template,
                 request.resourceType(),
                 request.prompt(),
-                null,
+                sourceImageUrl,
                 serializeOptions(enrichOptions(request.options(), candidateIndex - 1, candidateCount)),
                 candidateGroupId,
                 candidateIndex,
@@ -129,6 +135,20 @@ public class AiResourceGenerationService {
                     "AI_RESOURCE_TYPE_UNSUPPORTED",
                     "PRODUCT_ANGLE은 AI 생성 대상에서 제외되었습니다. PRODUCT 레이어에서 상품 기본 이미지를 사용하세요.",
                     HttpStatus.BAD_REQUEST
+            );
+        }
+    }
+
+    private void requireProductImage(AiResourceType resourceType, Card card) {
+        if (resourceType != AiResourceType.BACKGROUND) return;
+
+        if (card.getProduct() == null
+                || card.getProduct().getImageUrl() == null
+                || card.getProduct().getImageUrl().isBlank()) {
+            throw error(
+                    "PRODUCT_IMAGE_REQUIRED",
+                    "상품 이미지가 등록된 카드만 상품 포함 배경을 생성할 수 있습니다.",
+                    HttpStatus.CONFLICT
             );
         }
     }
