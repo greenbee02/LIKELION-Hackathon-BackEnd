@@ -311,7 +311,7 @@ class CardControllerIntegrationTest {
         BufferedImage testImage = new BufferedImage(1024, 1024, BufferedImage.TYPE_INT_ARGB);
         ByteArrayOutputStream testImageBytes = new ByteArrayOutputStream();
         ImageIO.write(testImage, "png", testImageBytes);
-        when(provider.generate(any())).thenReturn(new AiImageResult(
+        when(provider.generate(any())).thenReturn(AiImageResult.image(
                 testImageBytes.toByteArray(), "image/png", "test-image-model"));
         when(storage.store(any(), any(), any())).thenReturn("/generated/ai-resources/" + resourceId + ".png");
 

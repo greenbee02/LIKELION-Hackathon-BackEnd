@@ -21,7 +21,7 @@ class CardAspectRatioImageNormalizerTest {
         ImageIO.write(input, "png", bytes);
 
         AiImageResult result = normalizer.normalize(
-                new AiImageResult(bytes.toByteArray(), "image/png", "test"));
+                AiImageResult.image(bytes.toByteArray(), "image/png", "test"));
         BufferedImage output = ImageIO.read(new ByteArrayInputStream(result.imageBytes()));
 
         assertEquals(1000, output.getWidth());
