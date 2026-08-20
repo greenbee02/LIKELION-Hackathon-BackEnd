@@ -106,13 +106,35 @@ public class CardCustomization {
             String customizationData,
             Instant now
     ) {
+        return composed(
+                card,
+                template,
+                template.getFrontImageUrl(),
+                template.getBackImageUrl(),
+                inputText,
+                generatedMessage,
+                customizationData,
+                now
+        );
+    }
+
+    public static CardCustomization composed(
+            Card card,
+            CardTemplate template,
+            String generatedFrontImageUrl,
+            String generatedBackImageUrl,
+            String inputText,
+            String generatedMessage,
+            String customizationData,
+            Instant now
+    ) {
         CardCustomization customization = new CardCustomization();
         customization.id = UUID.randomUUID();
         customization.card = card;
         customization.template = template;
         customization.inputText = inputText;
-        customization.generatedFrontImageUrl = template.getFrontImageUrl();
-        customization.generatedBackImageUrl = template.getBackImageUrl();
+        customization.generatedFrontImageUrl = generatedFrontImageUrl;
+        customization.generatedBackImageUrl = generatedBackImageUrl;
         customization.generatedMessage = generatedMessage;
         customization.customizationData = customizationData;
         customization.aiModel = "composition-v1";

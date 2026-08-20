@@ -100,9 +100,17 @@ public class AiResourceCompositionService {
 
         String customizationData = serializeComposition(card, resources, request.layoutData(), request.layers());
         CardTemplate template = card.getTemplate();
+        String generatedFrontImageUrl = resources.stream()
+                .filter(resource -> resource.getResourceType() == com.cju.likelion.cardcollection.ai.domain.AiResourceType.BACKGROUND)
+                .map(AiResourceGeneration::getGeneratedImageUrl)
+                .filter(url -> url != null && !url.isBlank())
+                .findFirst()
+                .orElse(template.getFrontImageUrl());
         CardCustomization customization = CardCustomization.composed(
                 card,
                 template,
+                generatedFrontImageUrl,
+                template.getBackImageUrl(),
                 request.message(),
                 request.message(),
                 customizationData,
