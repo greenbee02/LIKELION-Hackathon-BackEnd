@@ -6,10 +6,12 @@ import com.cju.likelion.cardcollection.catalog.domain.Store;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -434,6 +436,9 @@ public class OpenAiImageProvider implements AiImageProvider {
     }
 
     private byte[] downloadSourceImage(String sourceImageUrl) throws IOException, InterruptedException {
+        byte[] packagedImage = readPackagedSourceImage(sourceImageUrl);
+        if (packagedImage != null) return packagedImage;
+
         URI uri;
         try {
             uri = resolveSourceImageUri(sourceImageUrl);
@@ -452,6 +457,37 @@ public class OpenAiImageProvider implements AiImageProvider {
             throw new IOException("원본 이미지 다운로드 실패: HTTP " + response.statusCode());
         }
         return response.body();
+    }
+
+    /**
+     * 상품 이미지 seed 는 백엔드 정적 리소스로 함께 배포된다. DB에는 브라우저용 상대 경로가
+     * 저장되므로, AI 워커가 외부 URL로만 접근하려 하면 `AI_SOURCE_IMAGE_BASE_URL` 설정이
+     * 없는 환경에서 배경 생성이 모두 실패한다. 먼저 패키지 안의 동일한 파일을 읽고, 파일이
+     * 없는 외부 이미지 경로만 기존 HTTP 다운로드로 넘긴다.
+     */
+    private byte[] readPackagedSourceImage(String sourceImageUrl) throws IOException {
+        if (sourceImageUrl == null || sourceImageUrl.isBlank()) return null;
+
+        URI requested;
+        try {
+            requested = URI.create(sourceImageUrl);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+        if (requested.isAbsolute()) return null;
+
+        String path = requested.getPath();
+        if (path == null || path.isBlank()) return null;
+        String resourcePath = path.replaceFirst("^/+", "");
+        if (resourcePath.contains("..")) {
+            throw new IOException("상품 원본 이미지 경로가 올바르지 않습니다.");
+        }
+
+        ClassPathResource resource = new ClassPathResource("static/" + resourcePath);
+        if (!resource.exists()) return null;
+        try (InputStream input = resource.getInputStream()) {
+            return input.readAllBytes();
+        }
     }
 
     private URI resolveSourceImageUri(String sourceImageUrl) {
