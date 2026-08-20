@@ -67,6 +67,10 @@ public class AiResourceGeneration {
     @Column(name = "generated_data", columnDefinition = "TEXT")
     private String generatedData;
 
+    /** 요청 시점의 옵션을 보존한다. 구조화된 리소스는 생성 완료 후 generatedData가 결과로 바뀌기 때문이다. */
+    @Column(name = "options_data", columnDefinition = "TEXT")
+    private String optionsData;
+
     @Column(name = "ai_model", length = 100)
     private String aiModel;
 
@@ -116,6 +120,7 @@ public class AiResourceGeneration {
         this.prompt = prompt;
         this.sourceImageUrl = sourceImageUrl;
         this.generatedData = generatedData;
+        this.optionsData = generatedData;
         this.generationStatus = AiResourceStatus.PENDING;
         this.attemptCount = 0;
         this.createdAt = now;

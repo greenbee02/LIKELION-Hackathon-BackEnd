@@ -30,6 +30,9 @@ import java.util.UUID;
 @Service
 public class CardService {
 
+    private static final String DEFAULT_BASIC_FRONT_IMAGE = "/images/templates/border_03.png";
+    private static final String DEFAULT_BASIC_BACK_IMAGE = "/images/templates/common_back_black_info.png";
+
     private final UserRepository userRepository;
     private final PurchaseQrRepository purchaseQrRepository;
     private final CardRepository cardRepository;
@@ -172,10 +175,25 @@ public class CardService {
     }
 
     private CardTemplate findTemplate(CardType type, UUID brandId) {
-        return templateRepository.findAllByActiveTrueOrderByCreatedAtAsc().stream()
+        List<CardTemplate> candidates = templateRepository.findAllByActiveTrueOrderByCreatedAtAsc().stream()
                 .filter(template -> template.getBrand().getId().equals(brandId))
                 .filter(template -> template.getAllowedCardType() == null || template.getAllowedCardType() == type)
-                .findFirst()
+                .toList();
+
+        if (type == CardType.BASIC) {
+            return candidates.stream()
+                    .filter(template -> DEFAULT_BASIC_FRONT_IMAGE.equals(template.getFrontImageUrl()))
+                    .filter(template -> DEFAULT_BASIC_BACK_IMAGE.equals(template.getBackImageUrl()))
+                    .findFirst()
+                    .orElseGet(() -> candidates.stream().findFirst()
+                            .orElseThrow(() -> error(
+                                    "CARD_TEMPLATE_NOT_FOUND",
+                                    "발급 가능한 카드 템플릿이 없습니다.",
+                                    HttpStatus.CONFLICT
+                            )));
+        }
+
+        return candidates.stream().findFirst()
                 .orElseThrow(() -> error("CARD_TEMPLATE_NOT_FOUND", "발급 가능한 카드 템플릿이 없습니다.", HttpStatus.CONFLICT));
     }
 
