@@ -14,10 +14,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 
 @Slf4j
 @Component
@@ -30,6 +34,8 @@ public class AiResourceGenerationWorker {
     private final CardAspectRatioImageNormalizer imageNormalizer;
     private final boolean enabled;
     private final String apiKey;
+    private final ExecutorService executor;
+    private final Semaphore slots;
 
     @Value("${app.ai.worker.max-attempts:3}")
     private int maxAttempts;
@@ -45,7 +51,8 @@ public class AiResourceGenerationWorker {
             GeneratedImageStorage imageStorage,
             CardAspectRatioImageNormalizer imageNormalizer,
             @Value("${app.ai.openai.enabled:false}") boolean enabled,
-            @Value("${app.ai.openai.api-key:}") String apiKey
+            @Value("${app.ai.openai.api-key:}") String apiKey,
+            @Value("${app.ai.worker.concurrency:4}") int concurrency
     ) {
         this.resourceRepository = resourceRepository;
         this.claimService = claimService;
@@ -54,6 +61,9 @@ public class AiResourceGenerationWorker {
         this.imageNormalizer = imageNormalizer;
         this.enabled = enabled;
         this.apiKey = apiKey;
+        int parallelism = Math.max(1, concurrency);
+        this.executor = Executors.newFixedThreadPool(parallelism);
+        this.slots = new Semaphore(parallelism);
     }
 
     public AiResourceGenerationWorker(
@@ -71,7 +81,8 @@ public class AiResourceGenerationWorker {
                 imageStorage,
                 imageNormalizer,
                 enabled,
-                apiKey
+                apiKey,
+                1
         );
     }
 
@@ -79,8 +90,40 @@ public class AiResourceGenerationWorker {
     public void processNext() {
         if (!enabled || apiKey == null || apiKey.isBlank()) return;
 
-        Optional<UUID> resourceId = claimService.claimNext();
-        resourceId.ifPresent(this::processClaimed);
+        /* 한 번의 요청으로 등록된 후보들을 동시에 처리하되, 워커 수를 넘어서지 않는다.
+           claim 은 DB 원자 연산이라 서버 인스턴스가 여러 개여도 같은 리소스를 중복 처리하지 않는다. */
+        while (slots.tryAcquire()) {
+            Optional<UUID> resourceId;
+            try {
+                resourceId = claimService.claimNext();
+            } catch (RuntimeException exception) {
+                slots.release();
+                log.error("AI resource worker could not claim the next resource", exception);
+                return;
+            }
+            if (resourceId.isEmpty()) {
+                slots.release();
+                return;
+            }
+
+            try {
+                executor.execute(() -> {
+                    try {
+                        processClaimed(resourceId.get());
+                    } finally {
+                        slots.release();
+                    }
+                });
+            } catch (RuntimeException exception) {
+                slots.release();
+                log.error("AI resource worker could not submit resource: resourceId={}", resourceId.get(), exception);
+            }
+        }
+    }
+
+    @PreDestroy
+    void shutdown() {
+        executor.shutdownNow();
     }
 
     public void process(UUID resourceId) {
