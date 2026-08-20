@@ -93,11 +93,14 @@ DELETE /api/v1/collections/{collectionId}/cards/{cardId}
 
 ```text
 GET  /api/v1/rewards/progress
+GET  /api/v1/rewards/progress/{collectionId}
 GET  /api/v1/rewards/my
 POST /api/v1/rewards/{userRewardId}/claim
 ```
 
 `GET /rewards/progress`는 공식 컬렉션별 필수 상품 수, 보유 수, 달성률과 연결된 리워드·이벤트의 해금 여부를 반환한다.
+
+`GET /rewards/progress/{collectionId}`는 리워드 목록에서 특정 공식 컬렉션을 선택했을 때 사용한다. 필수 상품별 보유 여부와 보유 카드 목록, 상품 이미지 URL, 리워드 또는 이벤트의 설명·이미지 URL·기간·장소를 반환한다. 보유 카드에는 `frontImageUrl`, `backImageUrl`을 함께 반환하며, 선택된 AI 완성 이미지가 있으면 이를 우선 사용하고 없으면 카드 템플릿 이미지를 사용한다. 이벤트 이미지가 아직 등록되지 않은 경우 `imageUrl`은 `null`이며, 프론트는 기본 이미지로 대체할 수 있다.
 
 `GET /rewards/my`는 현재 사용자의 해금 리워드·이벤트 목록을 반환한다. 동일 리워드 또는 이벤트는 사용자당 한 번만 해금된다.
 

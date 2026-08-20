@@ -59,6 +59,7 @@ public class SecurityConfig {
                                 "/api/v1/products/**",
                                 "/api/v1/product-collections/**",
                                 "/api/v1/card-templates",
+                                "/api/v1/local/demo/reset",
                                 "/images/**",
                                 "/generated/ai-resources/**",
                                 "/oauth2/**",

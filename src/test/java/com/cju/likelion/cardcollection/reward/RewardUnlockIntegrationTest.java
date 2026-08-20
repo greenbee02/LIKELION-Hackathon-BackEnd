@@ -39,6 +39,15 @@ class RewardUnlockIntegrationTest {
         assertThat(userRewards.existsByUserIdAndEventId(userId, UUID.fromString("80000000-0000-0000-0000-000000000001"))).isTrue();
         assertThat(userRewards.existsByUserIdAndRewardId(userId, UUID.fromString("70000000-0000-0000-0000-000000000001"))).isFalse();
 
+        mockMvc.perform(get("/api/v1/rewards/progress/40000000-0000-0000-0000-000000000001")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.requiredProductCount").value(3))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.ownedRequiredProductCount").value(2))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.requiredProducts[?(@.owned == true)]").isArray())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.requiredProducts[?(@.owned == true)].cards[0].frontImageUrl").exists())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.targets[?(@.type == 'EVENT')].event.location").exists());
+
         issue(token, "MCM-DEMO-2026-008");
         assertThat(userRewards.existsByUserIdAndRewardId(userId, UUID.fromString("70000000-0000-0000-0000-000000000001"))).isTrue();
         assertThat(userRewards.findByUserId(userId)).hasSize(2);
