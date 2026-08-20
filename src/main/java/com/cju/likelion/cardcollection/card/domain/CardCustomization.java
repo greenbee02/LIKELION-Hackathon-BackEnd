@@ -1,12 +1,16 @@
 package com.cju.likelion.cardcollection.card.domain;
 
 import com.cju.likelion.cardcollection.catalog.domain.CardTemplate;
+import com.cju.likelion.cardcollection.catalog.domain.CardBackLayout;
+import org.hibernate.annotations.ColumnTransformer;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -46,6 +50,18 @@ public class CardCustomization {
 
     @Column(name = "ai_model", length = 100)
     private String aiModel;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "back_layout_id")
+    private CardBackLayout backLayout;
+
+    @Column(name = "back_content_data", columnDefinition = "jsonb")
+    @ColumnTransformer(write = "?::jsonb")
+    private String backContentData;
+
+    @OneToMany(mappedBy = "customization", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("layerOrder ASC")
+    private List<CardCustomizationLayer> layers = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     @Column(name = "generation_status", nullable = false, length = 30)
@@ -104,6 +120,35 @@ public class CardCustomization {
         customization.createdAt = now;
         customization.updatedAt = now;
         return customization;
+    }
+
+    public static CardCustomization layered(
+            Card card,
+            CardTemplate template,
+            CardBackLayout backLayout,
+            String inputText,
+            String customizationData,
+            String backContentData,
+            Instant now
+    ) {
+        CardCustomization customization = new CardCustomization();
+        customization.id = UUID.randomUUID();
+        customization.card = card;
+        customization.template = template;
+        customization.inputText = inputText;
+        customization.generatedMessage = inputText;
+        customization.customizationData = customizationData;
+        customization.aiModel = "approved-assets-v1";
+        customization.backLayout = backLayout;
+        customization.backContentData = backContentData;
+        customization.generationStatus = CustomizationStatus.COMPLETED;
+        customization.createdAt = now;
+        customization.updatedAt = now;
+        return customization;
+    }
+
+    public void addLayer(CardCustomizationLayer layer) {
+        layers.add(layer);
     }
 
     public boolean isCompleted() {

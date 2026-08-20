@@ -9,6 +9,7 @@ import com.cju.likelion.cardcollection.card.domain.CardStatus;
 import com.cju.likelion.cardcollection.card.domain.PurchaseQr;
 import com.cju.likelion.cardcollection.card.exception.CardDomainException;
 import com.cju.likelion.cardcollection.card.repository.CardRepository;
+import com.cju.likelion.cardcollection.card.repository.CardCustomizationLayerRepository;
 import com.cju.likelion.cardcollection.card.repository.PurchaseQrRepository;
 import com.cju.likelion.cardcollection.card.service.CardService;
 import com.cju.likelion.cardcollection.ai.provider.AiImageProvider;
@@ -18,12 +19,17 @@ import com.cju.likelion.cardcollection.ai.storage.CardAspectRatioImageNormalizer
 import com.cju.likelion.cardcollection.ai.storage.GeneratedImageStorage;
 import com.cju.likelion.cardcollection.ai.worker.AiResourceGenerationWorker;
 import com.cju.likelion.cardcollection.catalog.domain.Brand;
+import com.cju.likelion.cardcollection.catalog.domain.CardBackLayout;
+import com.cju.likelion.cardcollection.catalog.domain.CardDesignAsset;
+import com.cju.likelion.cardcollection.catalog.domain.CardDesignAssetType;
 import com.cju.likelion.cardcollection.catalog.domain.CardTemplate;
 import com.cju.likelion.cardcollection.catalog.domain.Product;
 import com.cju.likelion.cardcollection.catalog.domain.ProductCollection;
 import com.cju.likelion.cardcollection.catalog.domain.ProductCollectionItem;
 import com.cju.likelion.cardcollection.catalog.domain.Store;
 import com.cju.likelion.cardcollection.catalog.repository.BrandRepository;
+import com.cju.likelion.cardcollection.catalog.repository.CardBackLayoutRepository;
+import com.cju.likelion.cardcollection.catalog.repository.CardDesignAssetRepository;
 import com.cju.likelion.cardcollection.catalog.repository.CardTemplateRepository;
 import com.cju.likelion.cardcollection.catalog.repository.ProductRepository;
 import com.cju.likelion.cardcollection.catalog.repository.ProductCollectionRepository;
@@ -84,10 +90,19 @@ class CardControllerIntegrationTest {
     private CardTemplateRepository templateRepository;
 
     @Autowired
+    private CardDesignAssetRepository designAssetRepository;
+
+    @Autowired
+    private CardBackLayoutRepository backLayoutRepository;
+
+    @Autowired
     private PurchaseQrRepository purchaseQrRepository;
 
     @Autowired
     private CardRepository cardRepository;
+
+    @Autowired
+    private CardCustomizationLayerRepository customizationLayerRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -217,12 +232,17 @@ class CardControllerIntegrationTest {
                                 }
                                 """))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.data.resourceType").value("BACKGROUND"))
-                .andExpect(jsonPath("$.data.status").value("PENDING"))
-                .andExpect(jsonPath("$.data.productId").value(fixture.product().getId().toString()))
-                .andExpect(jsonPath("$.data.sourceImageUrl").value("/images/products/prod_001.png"))
+                .andExpect(jsonPath("$.data.cardId").value(cardId))
+                .andExpect(jsonPath("$.data.groups.length()").value(1))
+                .andExpect(jsonPath("$.data.groups[0].resourceType").value("BACKGROUND"))
+                .andExpect(jsonPath("$.data.groups[0].candidateCount").value(4))
+                .andExpect(jsonPath("$.data.groups[0].candidates.length()").value(4))
+                .andExpect(jsonPath("$.data.groups[0].candidates[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.data.groups[0].candidates[0].productId").value(fixture.product().getId().toString()))
+                .andExpect(jsonPath("$.data.groups[0].candidates[0].sourceImageUrl").value("/images/products/prod_001.png"))
                 .andReturn().getResponse().getContentAsString();
-        String resourceId = objectMapper.readTree(resourceResponse).path("data").path("id").asText();
+        String resourceId = objectMapper.readTree(resourceResponse)
+                .path("data").path("groups").get(0).path("candidates").get(0).path("id").asText();
 
         mockMvc.perform(post("/api/v1/cards/" + cardId + "/ai-resources/compose")
                         .header("Authorization", "Bearer " + token)
@@ -234,7 +254,8 @@ class CardControllerIntegrationTest {
         mockMvc.perform(get("/api/v1/cards/" + cardId + "/ai-resources")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].id").value(resourceId));
+                .andExpect(jsonPath("$.data.cardId").value(cardId))
+                .andExpect(jsonPath("$.data.groups[0].candidates[0].id").value(resourceId));
 
         mockMvc.perform(get("/api/v1/cards/" + cardId + "/ai-resources/" + resourceId)
                         .header("Authorization", "Bearer " + token))
@@ -270,18 +291,25 @@ class CardControllerIntegrationTest {
                                 }
                                 """))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.data.length()").value(3))
-                .andExpect(jsonPath("$.data[0].status").value("PENDING"))
-                .andExpect(jsonPath("$.data[1].status").value("PENDING"))
-                .andExpect(jsonPath("$.data[2].status").value("PENDING"))
+                .andExpect(jsonPath("$.data.cardId").value(cardId))
+                .andExpect(jsonPath("$.data.groups.length()").value(3))
                 .andReturn().getResponse().getContentAsString();
 
-        JsonNode resources = objectMapper.readTree(batchResponse).path("data");
-        assertThat(resources.get(0).path("id").asText()).isNotEqualTo(resources.get(1).path("id").asText());
-        assertThat(resources.get(1).path("id").asText()).isNotEqualTo(resources.get(2).path("id").asText());
-        assertThat(resources.get(0).path("generatedData").asText()).contains("_regionalVariant");
-        assertThat(resources.get(1).path("generatedData").asText()).contains("_regionalVariant");
-        assertThat(resources.get(2).path("generatedData").asText()).contains("_regionalVariant");
+        JsonNode groups = objectMapper.readTree(batchResponse).path("data").path("groups");
+        java.util.Set<String> resourceTypes = new java.util.HashSet<>();
+        java.util.Set<String> resourceIds = new java.util.HashSet<>();
+        for (JsonNode group : groups) {
+            resourceTypes.add(group.path("resourceType").asText());
+            assertThat(group.path("candidateCount").asInt()).isEqualTo(4);
+            assertThat(group.path("candidates").size()).isEqualTo(4);
+            for (JsonNode candidate : group.path("candidates")) {
+                assertThat(candidate.path("status").asText()).isEqualTo("PENDING");
+                assertThat(candidate.path("generatedData").asText()).contains("_regionalVariant");
+                resourceIds.add(candidate.path("id").asText());
+            }
+        }
+        assertThat(resourceTypes).containsExactlyInAnyOrder("BACKGROUND", "BORDER", "PATTERN");
+        assertThat(resourceIds).hasSize(12);
     }
 
     @Test
@@ -303,9 +331,10 @@ class CardControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"resourceType\":\"BACKGROUND\",\"prompt\":\"dark velvet\"}"))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.groups[0].candidates[0].status").value("PENDING"))
                 .andReturn().getResponse().getContentAsString();
-        UUID resourceId = UUID.fromString(objectMapper.readTree(resourceResponse).path("data").path("id").asText());
+        UUID resourceId = UUID.fromString(objectMapper.readTree(resourceResponse)
+                .path("data").path("groups").get(0).path("candidates").get(0).path("id").asText());
 
         AiImageProvider provider = mock(AiImageProvider.class);
         GeneratedImageStorage storage = mock(GeneratedImageStorage.class);
@@ -408,7 +437,7 @@ class CardControllerIntegrationTest {
         ReflectionTestUtils.setField(fixture.product(), "region", "SEOUL");
         productRepository.saveAndFlush(fixture.product());
 
-        mockMvc.perform(get("/api/v1/products")
+        String catalogResponse = mockMvc.perform(get("/api/v1/products")
                         .param("offeringType", "PRODUCT")
                         .param("category", "BACKPACK")
                         .param("theme", "TRAVEL")
@@ -416,8 +445,196 @@ class CardControllerIntegrationTest {
                         .param("region", "SEOUL")
                         .param("limited", "true"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.totalElements").value(1))
-                .andExpect(jsonPath("$.data.items[0].id").value(fixture.product().getId().toString()));
+                .andReturn().getResponse().getContentAsString();
+
+        JsonNode items = objectMapper.readTree(catalogResponse).path("data").path("items");
+        JsonNode matchedProduct = null;
+        for (JsonNode item : items) {
+            if (fixture.product().getId().toString().equals(item.path("id").asText())) {
+                matchedProduct = item;
+                break;
+            }
+        }
+        assertThat(matchedProduct).isNotNull();
+        assertThat(matchedProduct.path("offeringType").asText()).isEqualTo("PRODUCT");
+        assertThat(matchedProduct.path("category").asText()).isEqualTo("BACKPACK");
+        assertThat(matchedProduct.path("theme").asText()).isEqualTo("TRAVEL");
+        assertThat(matchedProduct.path("season").asText()).isEqualTo("SS");
+        assertThat(matchedProduct.path("region").asText()).isEqualTo("SEOUL");
+        assertThat(matchedProduct.path("limited").asBoolean()).isTrue();
+    }
+
+    @Test
+    void cardOwnerCanReadOnlyOwnProductAndBrandDesignAssets() throws Exception {
+        Fixture fixture = fixture(false);
+        String ownerEmail = uniqueEmail();
+        signup(ownerEmail);
+        String ownerToken = login(ownerEmail);
+        String cardId = registerCard(ownerToken, fixture.qrToken());
+
+        CardDesignAsset productBackground = designAssetRepository.save(CardDesignAsset.of(
+                fixture.product().getBrand(),
+                fixture.product(),
+                "PRODUCT_BACKGROUND_" + UUID.randomUUID(),
+                CardDesignAssetType.PRODUCT_BACKGROUND,
+                "A",
+                "/images/templates/prod_test_a.png",
+                false,
+                "{\"recommendedZIndex\":10}"
+        ));
+        CardDesignAsset border = designAssetRepository.save(CardDesignAsset.of(
+                fixture.product().getBrand(),
+                null,
+                "BORDER_" + UUID.randomUUID(),
+                CardDesignAssetType.BORDER,
+                "01",
+                "/images/templates/border_test.png",
+                true,
+                "{\"recommendedZIndex\":20}"
+        ));
+        CardDesignAsset backBase = designAssetRepository.save(CardDesignAsset.of(
+                fixture.product().getBrand(),
+                null,
+                "BACK_BASE_" + UUID.randomUUID(),
+                CardDesignAssetType.BACK_BASE,
+                "DEFAULT",
+                "/images/templates/common_back_test.png",
+                false,
+                "{}"
+        ));
+        CardBackLayout backLayout = backLayoutRepository.save(CardBackLayout.of(
+                fixture.product().getBrand(),
+                "테스트 공통 뒷면",
+                backBase,
+                "{\"coordinateSystem\":\"NORMALIZED\",\"fields\":[]}"
+        ));
+
+        mockMvc.perform(get("/api/v1/cards/" + cardId + "/customization-options")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.cardId").value(cardId))
+                .andExpect(jsonPath("$.data.productId").value(fixture.product().getId().toString()))
+                .andExpect(jsonPath("$.data.front.productBackgrounds[0].id").value(productBackground.getId().toString()))
+                .andExpect(jsonPath("$.data.front.productBackgrounds[0].metadata.recommendedZIndex").value(10))
+                .andExpect(jsonPath("$.data.front.borders[0].id").value(border.getId().toString()))
+                .andExpect(jsonPath("$.data.front.borders[0].transparent").value(true))
+                .andExpect(jsonPath("$.data.back.layoutId").value(backLayout.getId().toString()))
+                .andExpect(jsonPath("$.data.back.baseImageUrl").value("/images/templates/common_back_test.png"))
+                .andExpect(jsonPath("$.data.back.layoutData.coordinateSystem").value("NORMALIZED"));
+
+        String anotherUserEmail = uniqueEmail();
+        signup(anotherUserEmail);
+        mockMvc.perform(get("/api/v1/cards/" + cardId + "/customization-options")
+                        .header("Authorization", "Bearer " + login(anotherUserEmail)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CARD_NOT_FOUND"));
+    }
+
+    @Test
+    void activeCardCanSaveApprovedAssetLayersAndBecomeCustomized() throws Exception {
+        Fixture fixture = fixture(false);
+        String email = uniqueEmail();
+        signup(email);
+        String token = login(email);
+        String cardId = registerCard(token, fixture.qrToken());
+        LayeredAssets assets = layeredAssets(fixture);
+
+        mockMvc.perform(post("/api/v1/cards/" + cardId + "/customizations/layers")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "productBackgroundAssetId": "%s",
+                                  "borderAssetId": "%s",
+                                  "backLayoutId": "%s",
+                                  "text": {
+                                    "content": "2026 SEOUL",
+                                    "x": 0.08,
+                                    "y": 0.08,
+                                    "width": 0.55,
+                                    "height": 0.12,
+                                    "rotation": 0,
+                                    "opacity": 1,
+                                    "zIndex": 30,
+                                    "style": {"fontFamily":"SERIF","color":"#E8DFD2"}
+                                  }
+                                }
+                                """.formatted(
+                                assets.productBackground().getId(),
+                                assets.border().getId(),
+                                assets.backLayout().getId()
+                        )))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.frontLayers.length()").value(3))
+                .andExpect(jsonPath("$.data.frontLayers[0].type").value("PRODUCT_BACKGROUND"))
+                .andExpect(jsonPath("$.data.frontLayers[0].assetId").value(assets.productBackground().getId().toString()))
+                .andExpect(jsonPath("$.data.frontLayers[1].type").value("BORDER"))
+                .andExpect(jsonPath("$.data.frontLayers[2].type").value("TEXT"))
+                .andExpect(jsonPath("$.data.frontLayers[2].textContent").value("2026 SEOUL"))
+                .andExpect(jsonPath("$.data.back.layoutId").value(assets.backLayout().getId().toString()))
+                .andExpect(jsonPath("$.data.back.contentData.product").value(fixture.product().getName()));
+
+        Card card = cardRepository.findById(UUID.fromString(cardId)).orElseThrow();
+        assertThat(card.getCardType()).isEqualTo(CardType.CUSTOMIZE);
+        assertThat(card.getSelectedCustomization()).isNotNull();
+        assertThat(customizationLayerRepository.findByCustomizationIdOrderByLayerOrderAsc(
+                card.getSelectedCustomization().getId()
+        )).hasSize(3);
+
+        mockMvc.perform(get("/api/v1/cards/" + cardId + "/customizations")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].frontLayers.length()").value(3))
+                .andExpect(jsonPath("$.data[0].back.contentData.serialNumber").value(card.getSerialNumber()));
+    }
+
+    @Test
+    void layeredCustomizationRejectsAnotherProductsBackgroundAsset() throws Exception {
+        Fixture fixture = fixture(false);
+        String email = uniqueEmail();
+        signup(email);
+        String token = login(email);
+        String cardId = registerCard(token, fixture.qrToken());
+        LayeredAssets assets = layeredAssets(fixture);
+        Fixture otherFixture = fixture(false);
+        CardDesignAsset anotherProductsBackground = designAssetRepository.save(CardDesignAsset.of(
+                otherFixture.product().getBrand(),
+                otherFixture.product(),
+                "PRODUCT_BACKGROUND_OTHER_" + UUID.randomUUID(),
+                CardDesignAssetType.PRODUCT_BACKGROUND,
+                "A",
+                "/images/templates/prod_other_a.png",
+                false,
+                "{}"
+        ));
+
+        mockMvc.perform(post("/api/v1/cards/" + cardId + "/customizations/layers")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "productBackgroundAssetId": "%s",
+                                  "borderAssetId": "%s",
+                                  "backLayoutId": "%s",
+                                  "text": {
+                                    "content": "2026 SEOUL",
+                                    "x": 0.08,
+                                    "y": 0.08,
+                                    "width": 0.55,
+                                    "height": 0.12,
+                                    "rotation": 0,
+                                    "opacity": 1,
+                                    "zIndex": 30
+                                  }
+                                }
+                                """.formatted(
+                                anotherProductsBackground.getId(),
+                                assets.border().getId(),
+                                assets.backLayout().getId()
+                        )))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CARD_DESIGN_ASSET_PRODUCT_MISMATCH"));
     }
 
     @Test
@@ -571,6 +788,46 @@ class CardControllerIntegrationTest {
         }
     }
 
+    private LayeredAssets layeredAssets(Fixture fixture) {
+        CardDesignAsset productBackground = designAssetRepository.save(CardDesignAsset.of(
+                fixture.product().getBrand(),
+                fixture.product(),
+                "PRODUCT_BACKGROUND_" + UUID.randomUUID(),
+                CardDesignAssetType.PRODUCT_BACKGROUND,
+                "A",
+                "/images/templates/prod_test_a.png",
+                false,
+                "{\"recommendedZIndex\":10}"
+        ));
+        CardDesignAsset border = designAssetRepository.save(CardDesignAsset.of(
+                fixture.product().getBrand(),
+                null,
+                "BORDER_" + UUID.randomUUID(),
+                CardDesignAssetType.BORDER,
+                "01",
+                "/images/templates/border_test.png",
+                true,
+                "{\"recommendedZIndex\":20}"
+        ));
+        CardDesignAsset backBase = designAssetRepository.save(CardDesignAsset.of(
+                fixture.product().getBrand(),
+                null,
+                "BACK_BASE_" + UUID.randomUUID(),
+                CardDesignAssetType.BACK_BASE,
+                "DEFAULT",
+                "/images/templates/common_back_test.png",
+                false,
+                "{}"
+        ));
+        CardBackLayout backLayout = backLayoutRepository.save(CardBackLayout.of(
+                fixture.product().getBrand(),
+                "테스트 공통 뒷면",
+                backBase,
+                "{\"coordinateSystem\":\"NORMALIZED\",\"fields\":[]}"
+        ));
+        return new LayeredAssets(productBackground, border, backLayout);
+    }
+
     private Fixture fixture(boolean limited) {
         Brand brand = brandRepository.save(Brand.of("테스트 브랜드 " + UUID.randomUUID()));
         Store store = storeRepository.save(Store.of(brand, "테스트 매장", "KR", "Seoul"));
@@ -628,5 +885,12 @@ class CardControllerIntegrationTest {
     }
 
     private record Fixture(String qrToken, Product product, Store store) {
+    }
+
+    private record LayeredAssets(
+            CardDesignAsset productBackground,
+            CardDesignAsset border,
+            CardBackLayout backLayout
+    ) {
     }
 }

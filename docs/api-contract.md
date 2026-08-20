@@ -18,6 +18,8 @@
 | POST | `/cards/registrations` | 카드 등록 |
 | GET | `/cards` | 내 카드 목록 조회 |
 | GET | `/cards/{cardId}` | 카드 상세 조회 |
+| GET | `/cards/{cardId}/customization-options` | 카드 커스터마이징 옵션 조회 |
+| POST | `/cards/{cardId}/customizations/layers` | 정적 에셋 레이어 커스터마이징 저장 |
 
 카드 API는 JWT 인증이 필요하다.
 
@@ -141,14 +143,85 @@ POST /api/v1/rewards/{userRewardId}/claim
 }
 ```
 
+### 카드 커스터마이징 옵션 조회
+
+`GET /api/v1/cards/{cardId}/customization-options`
+
+커스터마이징 화면에서 사용할 브랜드 승인 정적 에셋을 반환한다. 카드 소유자만 조회할 수 있으며, `ACTIVE` 카드만 지원한다.
+
+- `productBackgrounds`: 해당 카드 상품의 활성 `PRODUCT_BACKGROUND` 에셋
+- `borders`: 카드 상품과 같은 브랜드의 활성 `BORDER` 에셋
+- `back`: 같은 브랜드의 활성 공통 뒷면 이미지와 `layoutData`
+
+`metadata`, `layoutData`는 JSON 객체로 반환한다. 프론트는 에셋 파일명을 직접 조합하지 않고 반환된 `imageUrl`, `id`, 레이아웃 좌표를 사용한다.
+
+```json
+{
+  "data": {
+    "cardId": "card-id",
+    "productId": "product-id",
+    "front": {
+      "productBackgrounds": [
+        {
+          "id": "asset-id",
+          "assetKey": "PROD_005_A",
+          "type": "PRODUCT_BACKGROUND",
+          "variantCode": "A",
+          "imageUrl": "/images/templates/prod_005_A.png",
+          "transparent": false,
+          "width": 1024,
+          "height": 1536,
+          "metadata": { "recommendedZIndex": 10 }
+        }
+      ],
+      "borders": []
+    },
+    "back": {
+      "layoutId": "back-layout-id",
+      "baseImageUrl": "/images/templates/common_back_black_info.png",
+      "layoutData": { "coordinateSystem": "NORMALIZED", "fields": [] }
+    }
+  }
+}
+```
+
 ### 카드 커스터마이징
 
 ```text
 GET  /api/v1/cards/{cardId}/customizations
 POST /api/v1/cards/{cardId}/customizations
+POST /api/v1/cards/{cardId}/customizations/layers
 POST /api/v1/cards/{cardId}/customizations/{customizationId}/select
 POST /api/v1/cards/{cardId}/restore-original
 ```
+
+정적 승인 에셋을 사용한 레이어 커스터마이징 저장은 기존 Mock·AI 조합과 분리한다.
+
+`POST /api/v1/cards/{cardId}/customizations/layers`
+
+```json
+{
+  "productBackgroundAssetId": "product-background-asset-id",
+  "borderAssetId": "border-asset-id",
+  "backLayoutId": "back-layout-id",
+  "text": {
+    "content": "2026 SEOUL",
+    "x": 0.08,
+    "y": 0.08,
+    "width": 0.55,
+    "height": 0.12,
+    "rotation": 0,
+    "opacity": 1,
+    "zIndex": 30,
+    "style": {
+      "fontFamily": "SERIF",
+      "color": "#E8DFD2"
+    }
+  }
+}
+```
+
+저장 시 `PRODUCT_BACKGROUND`, `BORDER`, `TEXT` 레이어를 각각 하나씩 생성하고, 현재 구매 정보를 `backContentData`로 보존한다. 선택한 상품 배경은 현재 카드 상품과 같아야 하며, 테두리·뒷면 레이아웃은 카드 브랜드와 같고 활성 상태여야 한다. 정상 저장 시 커스터마이징 결과를 즉시 선택해 카드 타입을 `CUSTOMIZE`로 변경한다.
 
 커스터마이징 생성 요청:
 
@@ -415,5 +488,5 @@ Content-Type: application/json
 
 - 상품·공식 컬렉션·템플릿 조회 API는 로그인 없이 사용할 수 있다.
 - 카드·커스터마이징·AI 리소스 API는 JWT 인증이 필요하다.
-- 실제 DB는 PostgreSQL Flyway V1~V9 마이그레이션을 기준으로 한다. `DataBase/Schema.sql`은 MySQL 참고용이다.
+- 실제 DB는 PostgreSQL Flyway V1~V11 마이그레이션을 기준으로 한다. `DataBase/Schema.sql`은 MySQL 참고용이다.
 - AI 생성 결과는 현재 `build/generated-ai-resources` 로컬 저장소에 저장된다. 영구 저장소 전환은 필요하지만 현재 MVP 범위 밖이다.
