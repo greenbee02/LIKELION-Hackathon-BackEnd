@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.jpa.repository.EntityGraph;
 
 import java.time.Instant;
 import java.util.List;
@@ -62,4 +63,19 @@ public interface AiResourceGenerationRepository extends JpaRepository<AiResource
                AND processing_started_at < :staleBefore
             """, nativeQuery = true)
     int requeueStaleProcessing(@Param("staleBefore") Instant staleBefore);
+
+    @EntityGraph(attributePaths = {
+        "card",
+        "card.purchaseStore",
+        "product",
+        "template"
+    })
+    @Query("""
+            SELECT resource
+            FROM AiResourceGeneration resource
+            WHERE resource.id = :resourceId
+            """)
+    Optional<AiResourceGeneration> findForProcessingById(
+    @Param("resourceId") UUID resourceId
+    );
 }

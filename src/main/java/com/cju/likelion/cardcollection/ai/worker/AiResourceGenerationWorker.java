@@ -132,7 +132,7 @@ public class AiResourceGenerationWorker {
     }
 
     private void processClaimed(UUID resourceId) {
-        AiResourceGeneration resource = resourceRepository.findById(resourceId).orElse(null);
+        AiResourceGeneration resource = resourceRepository.findForProcessingById(resourceId).orElse(null);
         if (resource == null || resource.getGenerationStatus() != AiResourceStatus.PROCESSING) return;
 
         long startedAt = System.nanoTime();
